@@ -5,12 +5,13 @@ import { getStorage } from "firebase/storage";
 // Cấu hình Firebase lấy từ biến môi trường
 // Bạn cần tạo file .env và điền các giá trị này vào
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_FIREBASE_APP_ID
+  apiKey: "AIzaSyBsZ1JcSgpOyOXHfGXUysxeNtafOigebUg",
+  authDomain: "gen-lang-client-0783227587.firebaseapp.com",
+  projectId: "gen-lang-client-0783227587",
+  storageBucket: "gen-lang-client-0783227587.firebasestorage.app",
+  messagingSenderId: "417822947960",
+  appId: "1:417822947960:web:4be31b9ee9dafeddfdcb8d",
+  measurementId: "G-C34N464ZBX"
 };
 
 // Kiểm tra xem cấu hình có đầy đủ không

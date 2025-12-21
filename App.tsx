@@ -3,9 +3,8 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AIChat from './pages/AIChat';
-import { AppState, Customer, Contract, Product, Appointment, CustomerStatus, ProductType, ContractStatus, AppointmentType, AppointmentStatus, ContractProduct, PaymentFrequency } from './types';
+import { AppState, Customer, Contract, Product, Appointment, CustomerStatus, ProductType, ContractStatus, AppointmentType, AppointmentStatus, ContractProduct, PaymentFrequency, Gender } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
-import { uploadFile } from './services/storage';
 
 // --- HELPER FUNCTIONS ---
 // Format Date to dd/mm/yyyy
@@ -184,7 +183,6 @@ const ConfirmModal: React.FC<{
 
 
 // --- CUSTOMERS PAGE ---
-// (No changes needed in CustomersPage for this specific request, but ensuring imports are correct)
 const CustomersPage: React.FC<{ 
   customers: Customer[], 
   contracts: Contract[], 
@@ -196,8 +194,6 @@ const CustomersPage: React.FC<{
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'health' | 'contracts' | 'history'>('info');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
   
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({
       isOpen: false, id: '', name: ''
@@ -206,6 +202,7 @@ const CustomersPage: React.FC<{
   const initialFormState: Customer = {
     id: '',
     fullName: '',
+    gender: Gender.MALE,
     dob: '',
     phone: '',
     idCard: '',
@@ -214,7 +211,6 @@ const CustomersPage: React.FC<{
     health: { medicalHistory: '', height: 0, weight: 0, habits: '' },
     interactionHistory: [],
     status: CustomerStatus.POTENTIAL,
-    avatarUrl: ''
   };
 
   const [formData, setFormData] = useState<Customer>(initialFormState);
@@ -229,7 +225,7 @@ const CustomersPage: React.FC<{
   const customerContracts = contracts.filter(c => c.customerId === formData.id);
 
   const handleOpenAdd = () => {
-    setFormData({ ...initialFormState, avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}` });
+    setFormData({ ...initialFormState });
     setIsEditing(false);
     setActiveTab('info');
     setShowModal(true);
@@ -264,22 +260,6 @@ const CustomersPage: React.FC<{
       interactionHistory: [entry, ...prev.interactionHistory]
     }));
     setNewInteraction('');
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        // Upload to Firebase Storage
-        setIsUploading(true);
-        try {
-            const downloadUrl = await uploadFile(file, 'avatars');
-            setFormData(prev => ({ ...prev, avatarUrl: downloadUrl }));
-        } catch (error) {
-            alert("Lỗi tải ảnh: " + error);
-        } finally {
-            setIsUploading(false);
-        }
-    }
   };
 
   const TabButton = ({ id, label, icon }: { id: typeof activeTab, label: string, icon: string }) => (
@@ -338,14 +318,11 @@ const CustomersPage: React.FC<{
                 return (
                   <tr key={c.id} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <div className="flex items-center cursor-pointer" onClick={() => handleOpenEdit(c)}>
-                        <img src={c.avatarUrl || 'https://via.placeholder.com/40'} alt="" className="w-10 h-10 rounded-full mr-3 object-cover border border-gray-200" />
-                        <div>
-                          <p className="font-semibold text-gray-900 group-hover:text-pru-red transition-colors">{c.fullName}</p>
-                          <p className="text-xs text-gray-500 flex items-center">
-                            <i className="far fa-id-card mr-1"></i> {c.idCard || 'Chưa có CCCD'}
-                          </p>
-                        </div>
+                      <div className="cursor-pointer" onClick={() => handleOpenEdit(c)}>
+                        <p className="font-semibold text-gray-900 group-hover:text-pru-red transition-colors">{c.fullName}</p>
+                        <p className="text-xs text-gray-500 flex items-center">
+                          <i className="far fa-id-card mr-1"></i> {c.idCard || 'Chưa có CCCD'}
+                        </p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -406,9 +383,6 @@ const CustomersPage: React.FC<{
             <div className="bg-white rounded-2xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div className="flex items-center">
-                       {isEditing && (
-                         <img src={formData.avatarUrl || 'https://via.placeholder.com/150'} className="w-12 h-12 rounded-full mr-4 border-2 border-white shadow-sm object-cover" />
-                       )}
                        <div>
                         <h3 className="text-xl font-bold text-gray-800">{isEditing ? formData.fullName : 'Thêm khách hàng mới'}</h3>
                         <p className="text-xs text-gray-500">{isEditing ? `ID: ${formData.id}` : 'Nhập thông tin hồ sơ'}</p>
@@ -433,68 +407,6 @@ const CustomersPage: React.FC<{
                        <div className="space-y-4">
                            <h4 className="font-semibold text-gray-800 border-b pb-2">Thông tin định danh</h4>
                            
-                           {/* Avatar Editor Section */}
-                           <div className="flex items-start gap-4 mb-4">
-                                <div className="relative group cursor-pointer" onClick={() => !isUploading && fileInputRef.current?.click()}>
-                                    <img 
-                                        src={formData.avatarUrl || 'https://via.placeholder.com/150'} 
-                                        alt="Avatar" 
-                                        className={`w-20 h-20 rounded-full object-cover border-2 border-gray-200 shadow-sm bg-white transition ${isUploading ? 'opacity-50' : ''}`}
-                                        onError={(e) => {e.currentTarget.src = 'https://via.placeholder.com/150'}}
-                                    />
-                                    {isUploading ? (
-                                        <div className="absolute inset-0 flex items-center justify-center">
-                                            <i className="fas fa-spinner fa-spin text-pru-red text-xl"></i>
-                                        </div>
-                                    ) : (
-                                        <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <i className="fas fa-camera text-white"></i>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                     <label className="block text-xs font-medium text-gray-700 mb-1">Ảnh đại diện</label>
-                                     <div className="flex flex-col gap-2">
-                                        {/* Hidden File Input */}
-                                        <input 
-                                            type="file" 
-                                            ref={fileInputRef} 
-                                            onChange={handleFileUpload} 
-                                            accept="image/*" 
-                                            className="hidden" 
-                                            disabled={isUploading}
-                                        />
-                                        
-                                        <div className="flex gap-2">
-                                            <button 
-                                                onClick={() => fileInputRef.current?.click()}
-                                                disabled={isUploading}
-                                                className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2 rounded-lg text-xs font-medium transition flex items-center justify-center flex-1 border border-blue-200 disabled:opacity-50"
-                                            >
-                                                <i className="fas fa-upload mr-2"></i>{isUploading ? 'Đang tải...' : 'Tải ảnh lên'}
-                                            </button>
-                                            <button 
-                                                onClick={() => setFormData({...formData, avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`})}
-                                                disabled={isUploading}
-                                                className="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-gray-600 transition text-xs font-medium flex items-center border border-gray-200 disabled:opacity-50"
-                                                title="Tạo ảnh ngẫu nhiên"
-                                            >
-                                                <i className="fas fa-random mr-1"></i> Ngẫu nhiên
-                                            </button>
-                                        </div>
-                                        
-                                        {/* URL fallback */}
-                                        <input 
-                                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-1 focus:ring-red-200 outline-none bg-white text-xs text-gray-500" 
-                                            value={formData.avatarUrl || ''} 
-                                            onChange={e => setFormData({...formData, avatarUrl: e.target.value})} 
-                                            placeholder="Hoặc dán link ảnh..." 
-                                            disabled={isUploading}
-                                        />
-                                     </div>
-                                </div>
-                           </div>
-
                            <div>
                              <label className="block text-xs font-medium text-gray-700 mb-1">Họ và tên <span className="text-red-500">*</span></label>
                              <input className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-red-200 outline-none bg-white" 
@@ -502,15 +414,25 @@ const CustomersPage: React.FC<{
                            </div>
                            <div className="grid grid-cols-2 gap-4">
                              <div>
+                               <label className="block text-xs font-medium text-gray-700 mb-1">Giới tính</label>
+                               <select 
+                                    className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-red-200 outline-none bg-white"
+                                    value={formData.gender}
+                                    onChange={(e: any) => setFormData({...formData, gender: e.target.value})}
+                                >
+                                    {(Object.values(Gender) as string[]).map(g => <option key={g} value={g}>{g}</option>)}
+                                </select>
+                             </div>
+                             <div>
                                <label className="block text-xs font-medium text-gray-700 mb-1">Ngày sinh</label>
                                <input type="date" className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-red-200 outline-none bg-white" 
                                  value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} />
                              </div>
-                             <div>
+                           </div>
+                           <div>
                                <label className="block text-xs font-medium text-gray-700 mb-1">CCCD / CMND</label>
                                <input className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-red-200 outline-none bg-white" 
                                  value={formData.idCard} onChange={e => setFormData({...formData, idCard: e.target.value})} placeholder="12 số..." />
-                             </div>
                            </div>
                            <div>
                              <label className="block text-xs font-medium text-gray-700 mb-1">Trạng thái khách hàng</label>
@@ -965,7 +887,6 @@ const ContractsPage: React.FC<{
                             </div>
                             
                             <div className="flex items-center mb-4 pb-4 border-b border-gray-50">
-                               <img src={owner?.avatarUrl || 'https://via.placeholder.com/40'} className="w-10 h-10 rounded-full mr-3 border border-gray-100" />
                                <div>
                                  <h3 className="font-bold text-gray-800 text-base">{owner?.fullName || 'Unknown Customer'}</h3>
                                  <p className="text-xs text-gray-500">Bên mua bảo hiểm</p>

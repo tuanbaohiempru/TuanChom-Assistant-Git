@@ -1,5 +1,5 @@
 
-import { Customer, CustomerStatus, Product, ProductType, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency } from './types';
+import { Customer, CustomerStatus, Product, ProductType, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -56,6 +56,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   {
     id: 'c1',
     fullName: 'Nguyễn Thị Thanh',
+    gender: Gender.FEMALE,
     dob: '1985-05-20',
     phone: '0909123456',
     idCard: '079185000123',
@@ -68,12 +69,12 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       habits: 'Không hút thuốc, uống rượu xã giao'
     },
     interactionHistory: ['2023-01-10: Tư vấn lần đầu', '2023-01-15: Ký hợp đồng'],
-    status: CustomerStatus.SIGNED,
-    avatarUrl: 'https://picsum.photos/200/200'
+    status: CustomerStatus.SIGNED
   },
   {
     id: 'c2',
     fullName: 'Trần Văn Ba',
+    gender: Gender.MALE,
     dob: '1990-11-12',
     phone: '0912345678',
     idCard: '079190000456',
@@ -86,8 +87,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       habits: 'Hay thức khuya'
     },
     interactionHistory: ['2023-05-20: Gặp cafe giới thiệu sản phẩm'],
-    status: CustomerStatus.ADVISING,
-    avatarUrl: 'https://picsum.photos/201/201'
+    status: CustomerStatus.ADVISING
   }
 ];
 

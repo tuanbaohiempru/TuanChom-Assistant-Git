@@ -5,6 +5,12 @@ export enum CustomerStatus {
   SIGNED = 'Đã tham gia',
 }
 
+export enum Gender {
+  MALE = 'Nam',
+  FEMALE = 'Nữ',
+  OTHER = 'Khác'
+}
+
 export interface HealthInfo {
   medicalHistory: string;
   height: number; // cm
@@ -15,6 +21,7 @@ export interface HealthInfo {
 export interface Customer {
   id: string;
   fullName: string;
+  gender: Gender;
   dob: string; // ISO date string
   phone: string;
   idCard: string;
@@ -23,7 +30,6 @@ export interface Customer {
   health: HealthInfo;
   interactionHistory: string[];
   status: CustomerStatus;
-  avatarUrl?: string;
 }
 
 export enum ProductType {
