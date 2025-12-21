@@ -18,6 +18,38 @@ export interface HealthInfo {
   habits: string;
 }
 
+// New Enums for Analysis
+export enum FinancialStatus {
+  STABLE = 'Ổn định, có dư giả',
+  JUST_ENOUGH = 'Đủ sống, ít dư',
+  STRUGGLING = 'Bấp bênh, lo âu',
+  WEALTHY = 'Thượng lưu'
+}
+
+export enum PersonalityType {
+  ANALYTICAL = 'Phân tích (Cần số liệu, logic)',
+  EMOTIONAL = 'Cảm xúc (Cần sự an tâm, tin tưởng)',
+  DECISIVE = 'Quyết đoán (Cần trọng tâm, nhanh gọn)',
+  CAUTIOUS = 'Thận trọng (Cần chi tiết, so sánh)'
+}
+
+export enum ReadinessLevel {
+  COLD = 'Chưa sẵn sàng / Phòng thủ',
+  WARM = 'Đang cân nhắc / Tìm hiểu',
+  HOT = 'Sẵn sàng tham gia'
+}
+
+export interface CustomerAnalysis {
+  childrenCount: number;
+  incomeEstimate: string; // e.g. "20-30 triệu/tháng"
+  financialStatus: FinancialStatus;
+  insuranceKnowledge: string; // e.g. "Chưa biết gì", "Đã từng mua nhưng hủy"
+  previousExperience: string; // Bad or Good experience
+  keyConcerns: string; // e.g. "Con cái", "Hưu trí", "Bệnh hiểm nghèo"
+  personality: PersonalityType;
+  readiness: ReadinessLevel;
+}
+
 export interface Customer {
   id: string;
   fullName: string;
@@ -28,6 +60,7 @@ export interface Customer {
   job: string;
   companyAddress: string;
   health: HealthInfo;
+  analysis: CustomerAnalysis; // New Analysis Section
   interactionHistory: string[];
   status: CustomerStatus;
 }
@@ -44,15 +77,16 @@ export interface Product {
   code: string;
   type: ProductType;
   description: string;
-  rulesAndTerms: string; // The "AI knowledge base" content
+  rulesAndTerms: string; 
+  pdfUrl?: string; 
 }
 
 export interface ContractProduct {
   productId: string;
-  productName: string; // Denormalized for display
-  insuredName: string; // Who is insured
-  fee: number; // Premium
-  sumAssured: number; // Coverage Amount (Số tiền bảo hiểm)
+  productName: string; 
+  insuredName: string; 
+  fee: number; 
+  sumAssured: number; 
 }
 
 export enum ContractStatus {
@@ -71,12 +105,12 @@ export enum PaymentFrequency {
 export interface Contract {
   id: string;
   contractNumber: string;
-  customerId: string; // The Policy Owner
+  customerId: string; 
   effectiveDate: string;
   mainProduct: ContractProduct;
   riders: ContractProduct[];
   totalFee: number;
-  paymentFrequency: PaymentFrequency; // New field
+  paymentFrequency: PaymentFrequency; 
   nextPaymentDate: string;
   status: ContractStatus;
 }
@@ -97,11 +131,23 @@ export interface Appointment {
   id: string;
   customerId: string;
   customerName: string;
-  date: string; // ISO date string
+  date: string; 
   time: string;
   type: AppointmentType;
   status: AppointmentStatus;
   note: string;
+}
+
+// --- NEW AGENT PROFILE INTERFACE ---
+export interface AgentProfile {
+  id?: string;
+  fullName: string;
+  age: number;
+  address: string;
+  office: string;
+  agentCode: string;
+  title: string; // e.g. MDRT, MBA, Chuyên viên cao cấp
+  bio: string; // Short self-description
 }
 
 export interface AppState {
@@ -109,4 +155,5 @@ export interface AppState {
   products: Product[];
   contracts: Contract[];
   appointments: Appointment[];
+  agentProfile: AgentProfile | null; // Added profile to state
 }

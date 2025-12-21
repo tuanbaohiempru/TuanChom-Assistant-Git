@@ -16,7 +16,8 @@ const COLLECTIONS = {
     CUSTOMERS: 'customers',
     CONTRACTS: 'contracts',
     PRODUCTS: 'products',
-    APPOINTMENTS: 'appointments'
+    APPOINTMENTS: 'appointments',
+    SETTINGS: 'settings' // Used for Agent Profile
 };
 
 // --- GENERIC FUNCTIONS ---

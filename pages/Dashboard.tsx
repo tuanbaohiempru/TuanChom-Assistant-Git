@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { AppState, ContractStatus, AppointmentStatus, Contract, PaymentFrequency } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip } from 'recharts';
 
 interface DashboardProps {
   state: AppState;
@@ -46,14 +45,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateContract }) => {
     // Show overdue (but not yet lapsed) and upcoming 30 days
     return diffDays >= -60 && diffDays <= 30;
   });
-
-  // Chart Data
-  const contractStatusData = [
-    { name: 'Hiệu lực', value: activeContracts },
-    { name: 'Mất hiệu lực', value: contracts.filter(c => c.status === ContractStatus.LAPSED).length },
-    { name: 'Chờ thẩm định', value: contracts.filter(c => c.status === ContractStatus.PENDING).length },
-  ];
-  const COLORS = ['#00C49F', '#FF8042', '#FFBB28'];
 
   return (
     <div className="space-y-6">
@@ -175,41 +166,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateContract }) => {
 
         </div>
 
-        {/* Right Column: Charts & Agenda */}
+        {/* Right Column: Agenda Only */}
         <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">Tình trạng hợp đồng</h2>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={contractStatusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {contractStatusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <ReTooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center space-x-4 text-xs">
-                 {contractStatusData.map((entry, index) => (
-                   <div key={index} className="flex items-center">
-                     <span className="w-3 h-3 rounded-full mr-1" style={{backgroundColor: COLORS[index]}}></span>
-                     {entry.name} ({entry.value})
-                   </div>
-                 ))}
-              </div>
-            </div>
-
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                <h2 className="text-lg font-bold text-gray-800 mb-4">Lịch trình hôm nay</h2>
                {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length > 0 ? (

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/contracts', label: 'Hợp đồng', icon: 'fa-file-contract' },
     { path: '/products', label: 'Sản phẩm', icon: 'fa-book-open' },
     { path: '/appointments', label: 'Lịch hẹn', icon: 'fa-calendar-check' },
+    { path: '/settings', label: 'Cài đặt', icon: 'fa-cog' }, // New Settings Item
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -52,7 +54,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
              </div>
              <div>
                <p className="font-medium text-gray-900">Tư vấn viên</p>
-               <p className="text-xs">Prudential VN</p>
+               <Link to="/settings" className="text-xs text-blue-500 hover:underline">Cập nhật hồ sơ</Link>
              </div>
            </div>
         </div>
