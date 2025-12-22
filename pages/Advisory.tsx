@@ -1,18 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Customer, AgentProfile } from '../types';
+import { Customer, AgentProfile, Contract } from '../types';
 import { consultantChat } from '../services/geminiService';
 import { formatAdvisoryContent, cleanMarkdownForClipboard } from '../components/Shared';
 
 interface AdvisoryPageProps {
     customers: Customer[];
+    contracts: Contract[];
     agentProfile: AgentProfile | null;
 }
 
-const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, agentProfile }) => {
+const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agentProfile }) => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const customer = customers.find(c => c.id === id);
+    
+    // 1. Get Customer's Own Contracts
+    const customerContracts = contracts.filter(c => c.customerId === id);
+
+    // 2. Resolve Family Data (New Logic)
+    const familyContext = customer?.relationships?.map(rel => {
+        const relative = customers.find(c => c.id === rel.relatedCustomerId);
+        if (!relative) return null;
+        
+        // Find contracts owned by this relative
+        const relativeContracts = contracts.filter(c => c.customerId === relative.id);
+        const productsOwned = relativeContracts.map(c => c.mainProduct.productName);
+        if (relativeContracts.some(c => c.riders.some(r => r.productName.includes('Sức khỏe')))) {
+            productsOwned.push('Thẻ sức khỏe');
+        }
+
+        return {
+            name: relative.fullName,
+            relation: rel.relationship,
+            age: new Date().getFullYear() - new Date(relative.dob).getFullYear(),
+            job: relative.job,
+            hasContracts: relativeContracts.length > 0,
+            products: productsOwned
+        };
+    }).filter(Boolean) as any[] || [];
 
     const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
     const [input, setInput] = useState('');
@@ -32,7 +58,17 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, agentProfile }) 
         setIsGoalSet(true);
         setLoading(true);
         const startPrompt = "BẮT ĐẦU_ROLEPLAY: Hãy nói câu thoại đầu tiên với khách hàng ngay bây giờ.";
-        const response = await consultantChat(startPrompt, customer!, agentProfile, goal, []);
+        
+        // Pass familyContext to chat service
+        const response = await consultantChat(
+            startPrompt, 
+            customer!, 
+            customerContracts, 
+            familyContext, // New Param
+            agentProfile, 
+            goal, 
+            []
+        );
         setMessages([{ role: 'model', text: response }]);
         setLoading(false);
     };
@@ -45,7 +81,17 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, agentProfile }) 
         setLoading(true);
 
         const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-        const response = await consultantChat(userMsg, customer, agentProfile, goal, history);
+        
+        // Pass familyContext to chat service
+        const response = await consultantChat(
+            userMsg, 
+            customer, 
+            customerContracts, 
+            familyContext, // New Param
+            agentProfile, 
+            goal, 
+            history
+        );
         setMessages(prev => [...prev, { role: 'model', text: response }]);
         setLoading(false);
     };
@@ -71,7 +117,15 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, agentProfile }) 
             Trả lời ngắn gọn, từng phương án một, để tôi có thể chọn và nói ngay.
         `;
         try {
-            const hintResponse = await consultantChat(hintPrompt, customer, agentProfile, goal, history);
+            const hintResponse = await consultantChat(
+                hintPrompt, 
+                customer, 
+                customerContracts, 
+                familyContext, 
+                agentProfile, 
+                goal, 
+                history
+            );
             setMessages(prev => [...prev, { role: 'model', text: `💡 **GỢI Ý TỪ TRỢ LÝ:**\n\n${hintResponse}` }]);
         } catch (e) {
             alert("Không thể lấy gợi ý lúc này.");
@@ -124,10 +178,55 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, agentProfile }) 
                     <h3 className="font-bold text-gray-700 mb-4 border-b pb-2">Hồ sơ khách hàng</h3>
                     <div className="space-y-4 text-sm">
                         <div><span className="block text-gray-500 text-xs">Nghề nghiệp</span><div className="font-medium">{customer.job}</div></div>
-                        <div><span className="block text-gray-500 text-xs">Gia đình</span><div className="font-medium">{customer.analysis?.childrenCount} con</div></div>
+                        <div><span className="block text-gray-500 text-xs">Gia đình (Sơ bộ)</span><div className="font-medium">{customer.analysis?.childrenCount} con</div></div>
                         <div><span className="block text-gray-500 text-xs">Tài chính</span><div className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs mt-1">{customer.analysis?.financialStatus}</div></div>
                         <div><span className="block text-gray-500 text-xs">Tính cách</span><div className="inline-block px-2 py-0.5 rounded bg-purple-50 text-purple-700 text-xs mt-1">{customer.analysis?.personality}</div></div>
                         <div><span className="block text-gray-500 text-xs">Mối quan tâm</span><div className="italic text-gray-600">"{customer.analysis?.keyConcerns}"</div></div>
+                    </div>
+                    
+                    {/* Display existing contracts */}
+                    <div className="mt-6">
+                         <h3 className="font-bold text-gray-700 mb-4 border-b pb-2 flex justify-between">
+                            Hợp đồng đã có 
+                            <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{customerContracts.length}</span>
+                        </h3>
+                        {customerContracts.length > 0 ? (
+                            <div className="space-y-3">
+                                {customerContracts.map(c => (
+                                    <div key={c.id} className="bg-gray-50 p-2 rounded border border-gray-100 text-xs">
+                                        <div className="font-bold text-pru-red">{c.mainProduct.productName}</div>
+                                        <div className="text-gray-500">Phí: {c.totalFee.toLocaleString()}đ</div>
+                                        {c.riders.length > 0 && <div className="text-gray-400 italic">+{c.riders.length} thẻ bổ trợ</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-400 italic">Khách hàng chưa có HĐ nào.</p>
+                        )}
+                    </div>
+
+                    {/* Display Family Members Context */}
+                    <div className="mt-6">
+                         <h3 className="font-bold text-gray-700 mb-4 border-b pb-2 flex justify-between">
+                            Thành viên gia đình
+                            <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full">{familyContext.length}</span>
+                        </h3>
+                        {familyContext.length > 0 ? (
+                            <div className="space-y-3">
+                                {familyContext.map((rel: any, i) => (
+                                    <div key={i} className="bg-blue-50 p-2 rounded border border-blue-100 text-xs">
+                                        <div className="flex justify-between font-bold text-blue-800">
+                                            <span>{rel.relation}: {rel.name}</span>
+                                            <span>{rel.age}t</span>
+                                        </div>
+                                        <div className="text-gray-600 mt-1">{rel.hasContracts ? 'Đã có BH' : 'Chưa có BH'}</div>
+                                        {rel.products.length > 0 && <div className="text-[10px] text-gray-500 italic truncate">{rel.products.join(', ')}</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-400 italic">Chưa liên kết người thân.</p>
+                        )}
                     </div>
                 </div>
 

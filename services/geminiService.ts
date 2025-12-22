@@ -155,6 +155,8 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
 export const consultantChat = async (
     query: string,
     customer: Customer,
+    contracts: Contract[], 
+    familyContext: any[], // ADDED: Family context data
     agentProfile: AgentProfile | null,
     conversationGoal: string,
     history: { role: 'user' | 'model'; parts: { text: string }[] }[]
@@ -181,6 +183,32 @@ export const consultantChat = async (
             history: customer.interactionHistory
         });
 
+        // Format contracts context
+        const contractsContext = contracts.length > 0
+            ? JSON.stringify(contracts.map(c => ({
+                number: c.contractNumber,
+                status: c.status,
+                effectiveDate: c.effectiveDate,
+                nextPayment: c.nextPaymentDate,
+                mainProduct: {
+                    name: c.mainProduct.productName,
+                    sumAssured: c.mainProduct.sumAssured,
+                    fee: c.mainProduct.fee
+                },
+                riders: c.riders.map(r => ({
+                    name: r.productName,
+                    sumAssured: r.sumAssured,
+                    fee: r.fee
+                })),
+                totalFee: c.totalFee
+            })))
+            : "Khách hàng CHƯA có hợp đồng nào tại Prudential.";
+
+        // Format Family Context
+        const familyData = familyContext.length > 0
+            ? JSON.stringify(familyContext)
+            : "Chưa có thông tin chi tiết về người thân.";
+
         // Construct Agent Context
         const agentContext = agentProfile ? `
             THÔNG TIN VỀ BẠN (CỐ VẤN):
@@ -204,25 +232,35 @@ export const consultantChat = async (
         THÔNG TIN KHÁCH HÀNG:
         ${customerProfile}
 
+        DANH SÁCH HỢP ĐỒNG ĐÃ SỞ HỮU (EXISTING CONTRACTS):
+        ${contractsContext}
+
+        THÔNG TIN GIA ĐÌNH & NGƯỜI THÂN (FAMILY CONTEXT):
+        ${familyData}
+
+        === NHIỆM VỤ NÂNG CAO (CONTEXT-AWARE) ===
+        1. **Tra cứu Hợp đồng**: Nếu khách hỏi "Tôi có cái gì rồi?", hãy dựa vào danh sách trên để trả lời chính xác tên sản phẩm, số phí, quyền lợi. Đừng bịa.
+        2. **Gợi ý Bán thêm (Upsell/Cross-sell)**:
+           - Nếu khách có Hợp đồng Chính (Nhân thọ) nhưng chưa có Thẻ sức khỏe -> Gợi ý thêm thẻ.
+           - Dựa vào FAMILY CONTEXT: Nếu thấy Con cái (Child) chưa có hợp đồng -> Gợi ý quỹ học vấn (PRU-Hành Trang Trưởng Thành).
+           - Nếu thấy Vợ/Chồng (Spouse) chưa có bảo hiểm -> Gợi ý bảo vệ trụ cột.
+           - Dùng cụm từ: "Em thấy trong hồ sơ anh có liên kết với [Tên người thân], bé chưa có..." hoặc "Chị nhà mình đã có thẻ chưa anh?"
+        3. **Nhắc phí**: Nếu thấy ngày đóng phí sắp đến, hãy khéo léo nhắc.
+
         === CHIẾN THUẬT GIAO TIẾP "PING-PONG" (BẮT BUỘC TUÂN THỦ) ===
         1. **CHIA NHỎ NỘI DUNG**: 
            - Tuyệt đối KHÔNG trả lời một tràng dài như đọc văn mẫu.
            - Tối đa 2-3 câu ngắn mỗi lần trả lời.
-           - Nếu có nhiều thông tin (ví dụ quyền lợi), hãy nói từng cái một, hỏi khách xem họ thấy sao rồi mới nói tiếp.
         
         2. **CÂU HỎI DẪN DẮT (MICRO-CLOSING)**:
            - LUÔN LUÔN kết thúc câu trả lời bằng một câu hỏi ngắn để nhường lời cho khách.
-           - Ví dụ: "Anh thấy điểm này sao ạ?", "Chỗ này em nói có nhanh quá không anh?", "Anh có hay lo về vấn đề này không?"
+           - Ví dụ: "Anh thấy điểm này sao ạ?", "Chỗ này em nói có nhanh quá không anh?"
 
         3. **GIỌNG ĐIỆU "THỦ THỈ"**:
-           - Bỏ bớt sự trang trọng sáo rỗng. Dùng từ ngữ đời thường, gần gũi.
-           - Dùng các từ đệm: "dạ", "nhé", "à", "mà", "thực ra là", "anh ơi".
-           - Thể hiện cảm xúc: Biết khen, biết đồng cảm (VD: "Em thấy anh lo xa vậy là quá tốt cho con rồi...").
+           - Dùng từ ngữ đời thường, gần gũi.
+           - Thể hiện sự quan tâm đến cả gia đình họ.
 
-        4. **QUY TRÌNH TƯ DUY**:
-           - Nghe khách nói -> Đồng cảm/Khen ngợi -> Trả lời 1 ý nhỏ -> Hỏi lại khách -> Chờ phản hồi.
-
-        HÃY NHỚ: Mục tiêu không phải là thắng tranh luận, mà là làm khách hàng mở lòng.
+        HÃY NHỚ: Mục tiêu không phải là thắng tranh luận, mà là làm khách hàng mở lòng và chốt được giải pháp.
         `;
 
         const chat = ai.chats.create({

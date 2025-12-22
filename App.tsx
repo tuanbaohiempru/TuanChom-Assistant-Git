@@ -79,7 +79,7 @@ const App: React.FC = () => {
                     <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
                     <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
                     <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} />} />
-                    <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} agentProfile={state.agentProfile} />} />
+                    <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Layout>

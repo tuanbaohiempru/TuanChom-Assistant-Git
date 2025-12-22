@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, CustomerDocument, ContractStatus } from '../types';
 import { ConfirmModal, formatDateVN, SearchableCustomerSelect } from '../components/Shared';
 import { uploadFile } from '../services/storage';
+import ExcelImportModal from '../components/ExcelImportModal';
+import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
 
 interface CustomersPageProps {
     customers: Customer[];
     contracts: Contract[];
-    onAdd: (c: Customer) => void;
-    onUpdate: (c: Customer) => void;
-    onDelete: (id: string) => void;
+    onAdd: (c: Customer) => Promise<void>;
+    onUpdate: (c: Customer) => Promise<void>;
+    onDelete: (id: string) => Promise<void>;
 }
 
 const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onAdd, onUpdate, onDelete }) => {
@@ -19,6 +21,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
     
     // Modal States
     const [showModal, setShowModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false); // Excel Modal State
     const [isEditing, setIsEditing] = useState(false);
     const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'documents' | 'contracts'>('info');
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
@@ -94,9 +97,9 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
         setShowModal(true);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData.fullName || !formData.phone) return alert("Vui lòng nhập Họ tên và SĐT");
-        isEditing ? onUpdate(formData) : onAdd(formData);
+        isEditing ? await onUpdate(formData) : await onAdd(formData);
         setShowModal(false);
     };
 
@@ -176,14 +179,28 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
         setFormData(prev => ({...prev, documents: newDocs}));
     };
 
+    // --- IMPORT LOGIC ---
+    const handleBatchSave = async (validCustomers: Customer[]) => {
+        // Use Promise.all to save in parallel
+        await Promise.all(validCustomers.map(c => onAdd(c)));
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800">Quản lý Khách hàng</h1>
-                <button onClick={handleOpenAdd} className="bg-pru-red text-white px-5 py-2.5 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-500/30 font-medium flex items-center">
-                    <i className="fas fa-user-plus mr-2"></i>Thêm khách hàng
-                </button>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowImportModal(true)}
+                        className="bg-green-600 text-white px-5 py-2.5 rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-500/30 font-medium flex items-center"
+                    >
+                        <i className="fas fa-file-excel mr-2"></i>Nhập Excel
+                    </button>
+                    <button onClick={handleOpenAdd} className="bg-pru-red text-white px-5 py-2.5 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-500/30 font-medium flex items-center">
+                        <i className="fas fa-user-plus mr-2"></i>Thêm mới
+                    </button>
+                </div>
             </div>
 
             {/* Filters */}
@@ -276,7 +293,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                 ))}
             </div>
 
-            {/* Modal */}
+            {/* ADD/EDIT MODAL - Keeping existing code structure ... */}
+            {/* ... (The content of the Add/Edit modal remains the same as previous) ... */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
                     <div className="bg-white rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden">
@@ -526,7 +544,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                 </div>
             )}
 
-            {/* QUICK VIEW CONTRACT MODAL */}
+            {/* QUICK VIEW CONTRACT MODAL - Same as before... */}
             {viewContract && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in">
                     <div className="bg-white rounded-xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -591,6 +609,16 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
             )}
 
             <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa khách hàng?" message={`Bạn có chắc muốn xóa khách hàng ${deleteConfirm.name}? Mọi hợp đồng và lịch hẹn liên quan cũng nên được kiểm tra lại.`} onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({isOpen: false, id: '', name: ''})} />
+
+            {/* EXCEL IMPORT MODAL */}
+            <ExcelImportModal<Customer>
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                title="Nhập Khách Hàng từ Excel"
+                onDownloadTemplate={() => downloadTemplate('customer')}
+                onProcessFile={(file) => processCustomerImport(file, customers)}
+                onSave={handleBatchSave}
+            />
 
             <style>{`
                 .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; }

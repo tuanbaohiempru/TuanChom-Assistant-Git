@@ -2,20 +2,23 @@ import React, { useState, useMemo } from 'react';
 import { Contract, Customer, Product, ContractStatus, PaymentFrequency, ProductType, ContractProduct } from '../types';
 import { ConfirmModal, SearchableCustomerSelect, CurrencyInput, formatDateVN } from '../components/Shared';
 import { generateClaimSupport } from '../services/geminiService';
+import ExcelImportModal from '../components/ExcelImportModal';
+import { downloadTemplate, processContractImport } from '../utils/excelHelpers';
 
 interface ContractsPageProps {
     contracts: Contract[];
     customers: Customer[];
     products: Product[];
-    onAdd: (c: Contract) => void;
-    onUpdate: (c: Contract) => void;
-    onDelete: (id: string) => void;
+    onAdd: (c: Contract) => Promise<void>;
+    onUpdate: (c: Contract) => Promise<void>;
+    onDelete: (id: string) => Promise<void>;
 }
 
 const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, products, onAdd, onUpdate, onDelete }) => {
     // --- UI STATES ---
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [showModal, setShowModal] = useState(false);
+    const [showImportModal, setShowImportModal] = useState(false); // Import Modal
     const [viewContract, setViewContract] = useState<Contract | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
@@ -157,10 +160,10 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         setShowModal(true); 
     };
     const handleOpenEdit = (c: Contract) => { setFormData(c); setIsEditing(true); setShowModal(true); };
-    const handleSave = () => { 
+    const handleSave = async () => { 
         const finalData = { ...formData, totalFee: calculateTotalFee(formData) }; 
         if (!finalData.contractNumber || !finalData.customerId || !finalData.mainProduct.productId) return alert("Thiếu thông tin bắt buộc!");
-        isEditing ? onUpdate(finalData) : onAdd(finalData); 
+        isEditing ? await onUpdate(finalData) : await onAdd(finalData); 
         setShowModal(false); 
     };
 
@@ -172,14 +175,27 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         alert("Đã sao chép nội dung nhắc phí!");
     };
 
+    // --- IMPORT HANDLER ---
+    const handleBatchSave = async (validContracts: Contract[]) => {
+        await Promise.all(validContracts.map(c => onAdd(c)));
+    }
+
     return (
         <div className="space-y-6">
             {/* 1. HEADER & METRICS */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800">Quản lý Hợp đồng</h1>
-                <button onClick={handleOpenAdd} className="bg-pru-red text-white px-5 py-2.5 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-500/30 font-medium flex items-center">
-                    <i className="fas fa-file-signature mr-2"></i>Tạo hợp đồng mới
-                </button>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowImportModal(true)}
+                        className="bg-green-600 text-white px-5 py-2.5 rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-500/30 font-medium flex items-center"
+                    >
+                        <i className="fas fa-file-excel mr-2"></i>Nhập Excel
+                    </button>
+                    <button onClick={handleOpenAdd} className="bg-pru-red text-white px-5 py-2.5 rounded-xl hover:bg-red-700 transition shadow-lg shadow-red-500/30 font-medium flex items-center">
+                        <i className="fas fa-file-signature mr-2"></i>Tạo hợp đồng mới
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -496,7 +512,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 </div>
             )}
 
-            {/* CLAIM SUPPORT MODAL (NEW) */}
+            {/* CLAIM SUPPORT MODAL */}
             {claimModal.isOpen && claimModal.contract && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 animate-fade-in">
                     <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
@@ -572,8 +588,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 </div>
             )}
 
-            {/* ADD / EDIT MODAL (Updated) */}
-            {showModal && (
+            {/* ADD / EDIT MODAL - Keeping existing code structure ... */}
+             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
                     <div className="bg-white rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                         <div className="p-5 border-b flex justify-between items-center bg-gray-50">
@@ -652,6 +668,16 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             )}
 
             <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa hợp đồng?" message={`Bạn có chắc muốn xóa HĐ ${deleteConfirm.name}?`} onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({isOpen: false, id: '', name: ''})} />
+
+            {/* EXCEL IMPORT MODAL */}
+            <ExcelImportModal<Contract>
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                title="Nhập Hợp Đồng từ Excel"
+                onDownloadTemplate={() => downloadTemplate('contract')}
+                onProcessFile={(file) => processContractImport(file, contracts, customers)}
+                onSave={handleBatchSave}
+            />
 
             <style>{`
                 .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; }

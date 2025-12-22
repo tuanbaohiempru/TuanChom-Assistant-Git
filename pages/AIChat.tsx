@@ -7,6 +7,14 @@ interface AIChatProps {
   state: AppState;
 }
 
+// Declare Web Speech API types for TypeScript
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
 const AIChat: React.FC<AIChatProps> = ({ state }) => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
@@ -16,6 +24,11 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
     { role: 'model', text: 'Xin chào! Tôi là **PruMate**. \nTôi có thể giúp bạn tra cứu nhanh:\n- Thông tin hợp đồng & phí\n- Quyền lợi & Điều khoản sản phẩm\n- Lịch sử chăm sóc khách hàng' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Voice Recognition State
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Check if we are on the Advisory page to hide the button
@@ -28,6 +41,49 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isOpen, isExpanded]);
+
+  // --- Voice Recognition Setup ---
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false; // Stop automatically after silence
+      recognition.interimResults = true; // Show results while speaking
+      recognition.lang = 'vi-VN'; // Vietnamese
+
+      recognition.onstart = () => setIsListening(true);
+      
+      recognition.onend = () => setIsListening(false);
+      
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        setQuery(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói. Vui lòng dùng Chrome hoặc Safari.");
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      setQuery(''); // Clear input when starting new recording
+      recognitionRef.current.start();
+    }
+  };
 
   const handleSend = async () => {
     if (!query.trim()) return;
@@ -203,23 +259,43 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
 
           {/* Input Area */}
           <div className="p-4 bg-white border-t border-gray-100">
+            {isListening && (
+               <div className="text-center text-xs text-red-500 font-bold mb-2 animate-pulse flex justify-center items-center">
+                   <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
+                   Đang nghe bạn nói...
+               </div>
+            )}
             <div className="relative shadow-sm rounded-full">
-                <input
-                type="text"
-                className="w-full pl-5 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all placeholder-gray-400 text-gray-700"
-                placeholder="Nhập câu hỏi (Ví dụ: Khách hàng nào sắp đóng phí?)..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                disabled={isLoading}
-                autoFocus
-                />
-                <button 
-                onClick={handleSend}
-                disabled={isLoading || !query.trim()}
-                className="absolute right-1.5 top-1.5 w-10 h-10 bg-gradient-to-br from-pru-red to-red-600 text-white rounded-full flex items-center justify-center hover:shadow-md disabled:opacity-50 disabled:shadow-none transition-all transform hover:scale-105 active:scale-95"
+                {/* Voice Input Button */}
+                <button
+                    onClick={toggleListening}
+                    className={`absolute left-1.5 top-1.5 w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        isListening 
+                        ? 'bg-red-100 text-red-600 ring-2 ring-red-400 ring-opacity-50' 
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                    title="Nhập bằng giọng nói"
                 >
-                <i className="fas fa-paper-plane text-xs"></i>
+                    <i className={`fas ${isListening ? 'fa-microphone-slash' : 'fa-microphone'}`}></i>
+                </button>
+
+                <input
+                    type="text"
+                    className="w-full pl-14 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all placeholder-gray-400 text-gray-700"
+                    placeholder={isListening ? "Đang nghe..." : "Hỏi PruMate (hoặc bấm micro để nói)..."}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    disabled={isLoading}
+                    autoFocus
+                />
+                
+                <button 
+                    onClick={handleSend}
+                    disabled={isLoading || !query.trim()}
+                    className="absolute right-1.5 top-1.5 w-10 h-10 bg-gradient-to-br from-pru-red to-red-600 text-white rounded-full flex items-center justify-center hover:shadow-md disabled:opacity-50 disabled:shadow-none transition-all transform hover:scale-105 active:scale-95"
+                >
+                    <i className="fas fa-paper-plane text-xs"></i>
                 </button>
             </div>
             <div className="mt-2 flex justify-center gap-3 text-[10px] text-gray-400">
