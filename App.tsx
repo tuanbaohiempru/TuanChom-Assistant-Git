@@ -76,7 +76,7 @@ const App: React.FC = () => {
                     <Route path="/customers" element={<CustomersPage customers={state.customers} contracts={state.contracts} onAdd={addCustomer} onUpdate={updateCustomer} onDelete={deleteCustomer} />} />
                     <Route path="/contracts" element={<ContractsPage contracts={state.contracts} customers={state.customers} products={state.products} onAdd={addContract} onUpdate={updateContract} onDelete={deleteContract} />} />
                     <Route path="/products" element={<ProductsPage products={state.products} onAdd={addProduct} onUpdate={updateProduct} onDelete={deleteProduct} />} />
-                    <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
+                    <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
                     <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
                     <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} />} />
                     <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} agentProfile={state.agentProfile} />} />

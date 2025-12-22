@@ -145,12 +145,23 @@ export enum AppointmentType {
   CONSULTATION = 'Tư vấn',
   CARE_CALL = 'Gọi chăm sóc',
   FEE_REMINDER = 'Nhắc phí',
+  BIRTHDAY = 'Chúc mừng sinh nhật',
+  PAPERWORK = 'Hỗ trợ giấy tờ/Claim',
+  OTHER = 'Khác'
 }
 
 export enum AppointmentStatus {
   UPCOMING = 'Sắp tới',
   COMPLETED = 'Đã hoàn thành',
   CANCELLED = 'Đã hủy',
+}
+
+// New Enum for Outcome
+export enum AppointmentResult {
+  SUCCESS = 'Thành công / Khách quan tâm',
+  RESCHEDULE = 'Khách bận / Hẹn lại',
+  FAILED = 'Khách từ chối / Không nghe máy',
+  DONE = 'Đã xong'
 }
 
 export interface Appointment {
@@ -162,6 +173,10 @@ export interface Appointment {
   type: AppointmentType;
   status: AppointmentStatus;
   note: string;
+  
+  // New Outcome Tracking Fields
+  outcome?: AppointmentResult;
+  outcomeNote?: string;
 }
 
 // --- NEW AGENT PROFILE INTERFACE ---
