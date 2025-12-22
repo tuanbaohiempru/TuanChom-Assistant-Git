@@ -4,9 +4,11 @@ import { HashRouter as Router, Routes, Route, Navigate, useNavigate, useParams }
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AIChat from './pages/AIChat';
-import { AppState, Customer, Contract, Product, Appointment, CustomerStatus, ProductType, ContractStatus, AppointmentType, AppointmentStatus, ContractProduct, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, AgentProfile } from './types';
+import { AppState, Customer, Contract, Product, Appointment, CustomerStatus, ProductType, ContractStatus, AppointmentType, AppointmentStatus, ContractProduct, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, AgentProfile, CustomerDocument, RelationshipType, CustomerRelationship, MessageTemplate } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
 import { extractTextFromPdf, consultantChat } from './services/geminiService';
+import { uploadFile } from './services/storage';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
 // --- HELPER FUNCTIONS & COMPONENTS ---
 const formatDateVN = (dateStr: string) => {
@@ -229,8 +231,13 @@ const CustomersPage: React.FC<{
     const navigate = useNavigate();
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'profile' | 'health' | 'analysis' | 'contracts' | 'history'>('profile');
-    
+    const [activeTab, setActiveTab] = useState<'profile' | 'health' | 'analysis' | 'documents' | 'family' | 'contracts' | 'history'>('profile');
+    const [isUploading, setIsUploading] = useState(false);
+
+    // State for Family Tree feature
+    const [selectedRelation, setSelectedRelation] = useState<Customer | null>(null);
+    const [relationType, setRelationType] = useState<RelationshipType>(RelationshipType.SPOUSE);
+
     const defaultCustomer: Customer = {
         id: '',
         fullName: '',
@@ -252,7 +259,9 @@ const CustomersPage: React.FC<{
             readiness: ReadinessLevel.WARM
         },
         interactionHistory: [],
-        status: CustomerStatus.POTENTIAL
+        status: CustomerStatus.POTENTIAL,
+        documents: [],
+        relationships: []
     };
 
     const [formData, setFormData] = useState<Customer>(defaultCustomer);
@@ -270,14 +279,10 @@ const CustomersPage: React.FC<{
         setFormData({
             ...defaultCustomer,
             ...c,
-            analysis: {
-                ...defaultCustomer.analysis,
-                ...(c.analysis || {})
-            },
-            health: {
-                ...defaultCustomer.health,
-                ...(c.health || {})
-            }
+            analysis: { ...defaultCustomer.analysis, ...(c.analysis || {}) },
+            health: { ...defaultCustomer.health, ...(c.health || {}) },
+            documents: c.documents || [],
+            relationships: c.relationships || []
         }); 
         setIsEditing(true); 
         setActiveTab('profile');
@@ -304,8 +309,106 @@ const CustomersPage: React.FC<{
         setNewHistoryItem('');
     };
 
+    // Family Tree Logic
+    const handleAddRelationship = async () => {
+        if (!selectedRelation || !formData.id) return alert("Vui lòng chọn khách hàng và lưu hồ sơ hiện tại trước.");
+        
+        // 1. Update current customer form state
+        const newRel: CustomerRelationship = {
+            relatedCustomerId: selectedRelation.id,
+            relationship: relationType
+        };
+        const updatedRels = [...(formData.relationships || []), newRel];
+        setFormData({...formData, relationships: updatedRels});
+
+        // 2. Determine Inverse Relationship for the other person
+        let inverseType = RelationshipType.OTHER;
+        if (relationType === RelationshipType.SPOUSE) inverseType = RelationshipType.SPOUSE;
+        else if (relationType === RelationshipType.SIBLING) inverseType = RelationshipType.SIBLING;
+        else if (relationType === RelationshipType.PARENT) inverseType = RelationshipType.CHILD;
+        else if (relationType === RelationshipType.CHILD) inverseType = RelationshipType.PARENT;
+
+        // 3. Update the other customer (Direct Database Call for Bidirectional Sync)
+        const otherCustomer = customers.find(c => c.id === selectedRelation.id);
+        if (otherCustomer) {
+             const inverseRel: CustomerRelationship = {
+                 relatedCustomerId: formData.id,
+                 relationship: inverseType
+             };
+             // Avoid duplicates
+             const otherRels = otherCustomer.relationships || [];
+             if (!otherRels.some(r => r.relatedCustomerId === formData.id)) {
+                 await onUpdate({
+                     ...otherCustomer,
+                     relationships: [...otherRels, inverseRel]
+                 });
+             }
+        }
+        
+        // Reset selection
+        setSelectedRelation(null);
+    };
+
+    const handleRemoveRelationship = (index: number) => {
+        const newRels = [...(formData.relationships || [])];
+        newRels.splice(index, 1);
+        setFormData({...formData, relationships: newRels});
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        try {
+            const url = await uploadFile(file, `customers/${formData.id || 'temp'}`);
+            const newDoc: CustomerDocument = {
+                id: Date.now().toString(),
+                name: file.name,
+                url: url,
+                type: file.type.includes('image') ? 'image' : 'pdf',
+                uploadDate: new Date().toISOString()
+            };
+            setFormData(prev => ({
+                ...prev,
+                documents: [...(prev.documents || []), newDoc]
+            }));
+        } catch (error) {
+            alert("Lỗi upload: " + error);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     const getContractCount = (customerId: string) => contracts.filter(c => c.customerId === customerId).length;
     const customerContracts = isEditing ? contracts.filter(c => c.customerId === formData.id) : [];
+
+    // Financial Analysis Logic
+    const parseIncome = (incomeStr: string): number => {
+        const matches = incomeStr.match(/(\d+)/);
+        if (matches) {
+            return parseInt(matches[0]) * 1000000;
+        }
+        return 0; // Unknown
+    };
+    
+    const calculateFinancialGap = () => {
+        const income = parseIncome(formData.analysis?.incomeEstimate || "");
+        // Rule of thumb: Protection should be 10x Annual Income
+        const recommendedProtection = income > 0 ? income * 12 * 10 : 2000000000; // Default 2 Billion if unknown
+        
+        const currentProtection = customerContracts.reduce((sum, c) => {
+            if (c.status !== ContractStatus.ACTIVE) return sum;
+            const main = c.mainProduct.sumAssured || 0;
+            const riders = (c.riders || []).reduce((s, r) => s + (r.sumAssured || 0), 0);
+            return sum + main + riders;
+        }, 0);
+
+        return [
+            { name: 'Thực tế', value: currentProtection },
+            { name: 'Khuyến nghị (10 năm TN)', value: recommendedProtection },
+        ];
+    };
 
     return (
         <div className="space-y-4">
@@ -366,18 +469,20 @@ const CustomersPage: React.FC<{
                          </div>
 
                          {/* Tabs Navigation */}
-                         <div className="flex border-b border-gray-200 bg-white px-6">
+                         <div className="flex border-b border-gray-200 bg-white px-6 overflow-x-auto">
                             {[
                                 { id: 'profile', label: 'Hồ sơ', icon: 'fa-user' },
                                 { id: 'health', label: 'Sức khỏe', icon: 'fa-heartbeat' },
-                                { id: 'analysis', label: 'Phân tích', icon: 'fa-chart-pie' }, // New Tab
+                                { id: 'analysis', label: 'Phân tích', icon: 'fa-chart-pie' }, 
+                                { id: 'documents', label: 'Tài liệu', icon: 'fa-folder-open' }, 
+                                { id: 'family', label: 'Gia đình', icon: 'fa-users' }, 
                                 { id: 'contracts', label: `Hợp đồng (${customerContracts.length})`, icon: 'fa-file-contract' },
                                 { id: 'history', label: 'Lịch sử', icon: 'fa-history' },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
-                                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                                         activeTab === tab.id 
                                         ? 'border-pru-red text-pru-red' 
                                         : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -466,22 +571,157 @@ const CustomersPage: React.FC<{
                                 </div>
                              )}
 
-                             {/* TAB 3: ANALYSIS (New fields moved here) */}
+                             {/* TAB 3: ANALYSIS with CHART */}
                              {activeTab === 'analysis' && (
-                                <div className="max-w-3xl">
-                                     <h4 className="font-bold text-gray-700 mb-4 text-base">Phân tích chân dung khách hàng</h4>
-                                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Độ sẵn sàng tham gia</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.readiness} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, readiness: e.target.value}})}>{Object.values(ReadinessLevel).map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Tính cách (DISC/MBTI)</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.personality} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, personality: e.target.value}})}>{Object.values(PersonalityType).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Tình hình tài chính</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.financialStatus} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, financialStatus: e.target.value}})}>{Object.values(FinancialStatus).map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Thu nhập ước tính</label><input className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.incomeEstimate} onChange={e => setFormData({...formData, analysis: {...formData.analysis, incomeEstimate: e.target.value}})} /></div>
-                                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Số con</label><input type="number" className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.childrenCount} onChange={e => setFormData({...formData, analysis: {...formData.analysis, childrenCount: Number(e.target.value)}})} /></div>
-                                         <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Mối quan tâm chính</label><input className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.keyConcerns} onChange={e => setFormData({...formData, analysis: {...formData.analysis, keyConcerns: e.target.value}})} placeholder="VD: Hưu trí, Giáo dục con cái..." /></div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                     <div className="space-y-4">
+                                         <h4 className="font-bold text-gray-700 text-base">Chân dung khách hàng</h4>
+                                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Độ sẵn sàng tham gia</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.readiness} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, readiness: e.target.value}})}>{Object.values(ReadinessLevel).map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Tính cách (DISC/MBTI)</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.personality} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, personality: e.target.value}})}>{Object.values(PersonalityType).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Tình hình tài chính</label><select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={formData.analysis?.financialStatus} onChange={(e:any) => setFormData({...formData, analysis: {...formData.analysis, financialStatus: e.target.value}})}>{Object.values(FinancialStatus).map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Thu nhập ước tính (Triệu/tháng)</label><input className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.incomeEstimate} onChange={e => setFormData({...formData, analysis: {...formData.analysis, incomeEstimate: e.target.value}})} /></div>
+                                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Số con</label><input type="number" className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.childrenCount} onChange={e => setFormData({...formData, analysis: {...formData.analysis, childrenCount: Number(e.target.value)}})} /></div>
+                                             <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Mối quan tâm chính</label><input className="w-full border border-gray-300 p-2.5 rounded-lg" value={formData.analysis?.keyConcerns} onChange={e => setFormData({...formData, analysis: {...formData.analysis, keyConcerns: e.target.value}})} placeholder="VD: Hưu trí, Giáo dục con cái..." /></div>
+                                         </div>
+                                     </div>
+
+                                     {/* FINANCIAL GAP ANALYSIS CHART */}
+                                     <div>
+                                         <h4 className="font-bold text-gray-700 mb-4 text-base flex items-center">
+                                             <i className="fas fa-chart-bar mr-2 text-blue-500"></i>Phân tích Nhu cầu Bảo vệ (Gap Analysis)
+                                         </h4>
+                                         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm h-64">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={calculateFinancialGap()} layout="vertical">
+                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                                    <XAxis type="number" tickFormatter={(val) => `${val/1000000000} Tỷ`} />
+                                                    <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 12}} />
+                                                    <Tooltip formatter={(val: number) => `${val.toLocaleString()} đ`} />
+                                                    <Bar dataKey="value" fill="#8884d8" barSize={30} radius={[0, 4, 4, 0]}>
+                                                        {calculateFinancialGap().map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={index === 0 ? '#4ade80' : '#ed1b2e'} />
+                                                        ))}
+                                                    </Bar>
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                         </div>
+                                         <p className="text-xs text-gray-500 mt-2 italic">* Biểu đồ so sánh tổng mệnh giá bảo vệ hiện tại so với mức khuyến nghị (10 lần thu nhập năm).</p>
                                      </div>
                                 </div>
                              )}
 
-                             {/* TAB 4: CONTRACTS */}
+                             {/* TAB 4: DOCUMENTS (DIGITAL CABINET) */}
+                             {activeTab === 'documents' && (
+                                 <div>
+                                     <div className="flex justify-between items-center mb-4">
+                                         <h4 className="font-bold text-gray-700 text-base">Hồ sơ số & Tài liệu</h4>
+                                         <label className="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm text-sm font-medium flex items-center">
+                                             <i className={`fas ${isUploading ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'} mr-2`}></i>
+                                             {isUploading ? 'Đang tải...' : 'Tải lên'}
+                                             <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} accept="image/*,.pdf" />
+                                         </label>
+                                     </div>
+                                     
+                                     {(!formData.documents || formData.documents.length === 0) ? (
+                                         <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                                             <i className="fas fa-folder-open text-4xl text-gray-300 mb-3"></i>
+                                             <p className="text-gray-500 text-sm">Chưa có tài liệu nào.</p>
+                                             <p className="text-xs text-gray-400">Tải lên CCCD, Hợp đồng, Giấy khám sức khỏe...</p>
+                                         </div>
+                                     ) : (
+                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                             {formData.documents.map((doc, idx) => (
+                                                 <a href={doc.url} target="_blank" rel="noreferrer" key={idx} className="group relative block bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition decoration-0">
+                                                     <div className="flex items-center justify-center h-24 mb-3 bg-gray-50 rounded-lg group-hover:bg-blue-50 transition">
+                                                         <i className={`fas ${doc.type === 'pdf' ? 'fa-file-pdf text-red-500' : 'fa-image text-blue-500'} text-3xl`}></i>
+                                                     </div>
+                                                     <p className="font-medium text-sm text-gray-800 truncate" title={doc.name}>{doc.name}</p>
+                                                     <p className="text-xs text-gray-400 mt-1">{new Date(doc.uploadDate).toLocaleDateString('vi-VN')}</p>
+                                                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
+                                                         <button className="text-gray-400 hover:text-blue-600"><i className="fas fa-external-link-alt"></i></button>
+                                                     </div>
+                                                 </a>
+                                             ))}
+                                         </div>
+                                     )}
+                                 </div>
+                             )}
+
+                             {/* TAB 5: FAMILY TREE (New Tab) */}
+                             {activeTab === 'family' && (
+                                <div>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="font-bold text-gray-700 text-base">Sơ đồ Phả hệ Gia đình</h4>
+                                        <div className="text-xs text-gray-500 italic">Thêm thành viên để bán chéo sản phẩm</div>
+                                    </div>
+                                    
+                                    {/* Add Relationship Form */}
+                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+                                        <p className="text-sm font-bold text-blue-800 mb-2">Thêm mối quan hệ</p>
+                                        <div className="flex flex-col md:flex-row gap-3 items-end">
+                                            <div className="flex-1 w-full">
+                                                <SearchableCustomerSelect 
+                                                    customers={customers.filter(c => c.id !== formData.id)} // Exclude self
+                                                    value={selectedRelation?.fullName || ''}
+                                                    onChange={setSelectedRelation}
+                                                    label="Chọn người thân (Đã có trong hệ thống)"
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-48">
+                                                <label className="block text-xs font-bold text-gray-500 mb-1">Mối quan hệ</label>
+                                                <select className="w-full border border-gray-300 p-2.5 rounded-lg bg-white" value={relationType} onChange={(e: any) => setRelationType(e.target.value)}>
+                                                    {Object.values(RelationshipType).map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <button onClick={handleAddRelationship} className="bg-blue-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-blue-700 whitespace-nowrap">
+                                                <i className="fas fa-link mr-1"></i> Liên kết
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Family List / Tree Visualization */}
+                                    {(!formData.relationships || formData.relationships.length === 0) ? (
+                                        <div className="text-center py-8 text-gray-400 border border-dashed rounded-lg">
+                                            Chưa có thông tin gia đình.
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {formData.relationships.map((rel, idx) => {
+                                                const relative = customers.find(c => c.id === rel.relatedCustomerId);
+                                                if (!relative) return null;
+                                                return (
+                                                    <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center shadow-sm relative group">
+                                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold mr-3 text-lg ${relative.gender === Gender.FEMALE ? 'bg-pink-400' : 'bg-blue-500'}`}>
+                                                            {relative.fullName.charAt(0)}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <h5 className="font-bold text-gray-800">{relative.fullName}</h5>
+                                                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{rel.relationship}</span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-500 mt-1">
+                                                                <i className="fas fa-birthday-cake mr-1"></i> {new Date().getFullYear() - new Date(relative.dob).getFullYear()} tuổi
+                                                                <span className="mx-2">•</span>
+                                                                {getContractCount(relative.id)} HĐ
+                                                            </p>
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleRemoveRelationship(idx)}
+                                                            className="text-gray-300 hover:text-red-500 p-2 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition"
+                                                            title="Gỡ liên kết"
+                                                        >
+                                                            <i className="fas fa-unlink"></i>
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                             )}
+
+                             {/* TAB 7: CONTRACTS */}
                              {activeTab === 'contracts' && (
                                  <div>
                                      <div className="flex justify-between items-center mb-4">
@@ -511,7 +751,7 @@ const CustomersPage: React.FC<{
                                  </div>
                              )}
 
-                             {/* TAB 5: HISTORY */}
+                             {/* TAB 8: HISTORY */}
                              {activeTab === 'history' && (
                                  <div>
                                      <h4 className="font-bold text-gray-700 mb-4 text-base">Lịch sử tương tác</h4>
@@ -571,6 +811,266 @@ const CustomersPage: React.FC<{
         </div>
     );
 }
+
+// --- NEW MESSAGE TEMPLATES PAGE ---
+const MessageTemplatesPage: React.FC<{
+    templates: MessageTemplate[];
+    customers: Customer[];
+    contracts: Contract[];
+    onAdd: (t: MessageTemplate) => void;
+    onUpdate: (t: MessageTemplate) => void;
+    onDelete: (id: string) => void;
+}> = ({ templates, customers, contracts, onAdd, onUpdate, onDelete }) => {
+    const [showModal, setShowModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [formData, setFormData] = useState<MessageTemplate>({
+        id: '',
+        title: '',
+        content: '',
+        category: 'care',
+        icon: 'fa-comment',
+        color: 'blue'
+    });
+    const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string}>({ isOpen: false, id: '' });
+
+    // Use Template Modal State
+    const [useModal, setUseModal] = useState<{ isOpen: boolean; template: MessageTemplate | null }>({ isOpen: false, template: null });
+    const [selectedCustomerForTemplate, setSelectedCustomerForTemplate] = useState<Customer | null>(null);
+    const [previewContent, setPreviewContent] = useState('');
+
+    const handleOpenAdd = () => {
+        setFormData({ id: '', title: '', content: '', category: 'care', icon: 'fa-comment', color: 'blue' });
+        setIsEditing(false);
+        setShowModal(true);
+    };
+
+    const handleOpenEdit = (t: MessageTemplate) => {
+        setFormData(t);
+        setIsEditing(true);
+        setShowModal(true);
+    };
+
+    const handleSubmit = () => {
+        if (!formData.title || !formData.content) return alert("Vui lòng nhập Tiêu đề và Nội dung");
+        isEditing ? onUpdate(formData) : onAdd(formData);
+        setShowModal(false);
+    };
+
+    const insertVariable = (variable: string) => {
+        setFormData(prev => ({
+            ...prev,
+            content: prev.content + ` ${variable} `
+        }));
+    };
+
+    // --- Message Generation Logic ---
+    const generateMessage = (templateContent: string, customer: Customer) => {
+        let text = templateContent;
+        
+        // Basic Info
+        text = text.replace(/\{name\}|\{Tên khách hàng\}/gi, customer.fullName);
+        
+        // Gender
+        const greeting = customer.gender === Gender.MALE ? 'Anh' : customer.gender === Gender.FEMALE ? 'Chị' : 'Bạn';
+        text = text.replace(/\{gender\}|\{Danh xưng\}/gi, greeting);
+
+        // Contract Info (Find active one)
+        const activeContract = contracts.find(c => c.customerId === customer.id && c.status === ContractStatus.ACTIVE);
+        
+        if (activeContract) {
+            text = text.replace(/\{contract\}|\{Số hợp đồng\}/gi, activeContract.contractNumber);
+            text = text.replace(/\{date\}|\{Ngày đóng phí\}/gi, formatDateVN(activeContract.nextPaymentDate));
+            text = text.replace(/\{fee\}|\{Số tiền\}/gi, activeContract.totalFee.toLocaleString('vi-VN') + ' đ');
+        } else {
+             text = text.replace(/\{contract\}|\{Số hợp đồng\}/gi, '[Số HĐ]');
+             text = text.replace(/\{date\}|\{Ngày đóng phí\}/gi, '[Ngày]');
+             text = text.replace(/\{fee\}|\{Số tiền\}/gi, '[Số tiền]');
+        }
+
+        return text;
+    };
+
+    useEffect(() => {
+        if (useModal.isOpen && useModal.template && selectedCustomerForTemplate) {
+            setPreviewContent(generateMessage(useModal.template.content, selectedCustomerForTemplate));
+        } else if (useModal.isOpen && useModal.template) {
+            setPreviewContent(useModal.template.content); // Show raw template if no customer selected
+        }
+    }, [useModal.isOpen, useModal.template, selectedCustomerForTemplate]);
+
+    const handleCopyGenerated = () => {
+        navigator.clipboard.writeText(previewContent);
+        alert("Đã sao chép nội dung tin nhắn!");
+        setUseModal({ isOpen: false, template: null });
+        setSelectedCustomerForTemplate(null);
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold text-gray-800">Quản lý Mẫu Tin Nhắn</h1>
+                <button onClick={handleOpenAdd} className="bg-pru-red text-white px-4 py-2 rounded-lg hover:bg-red-700 transition shadow-md">
+                    <i className="fas fa-plus mr-2"></i>Thêm mẫu mới
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {templates.map(t => (
+                    <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition flex flex-col">
+                        <div className={`h-2 w-full bg-${t.color || 'gray'}-500`}></div>
+                        <div className="p-5 flex-1 flex flex-col">
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center">
+                                    <div className={`w-10 h-10 rounded-full bg-${t.color || 'gray'}-50 flex items-center justify-center text-${t.color || 'gray'}-600 mr-3`}>
+                                        <i className={`fas ${t.icon || 'fa-comment'}`}></i>
+                                    </div>
+                                    <h3 className="font-bold text-lg text-gray-800 line-clamp-1">{t.title}</h3>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button onClick={() => handleOpenEdit(t)} className="text-blue-500 hover:bg-blue-50 p-2 rounded"><i className="fas fa-edit"></i></button>
+                                    <button onClick={() => setDeleteConfirm({ isOpen: true, id: t.id })} className="text-red-500 hover:bg-red-50 p-2 rounded"><i className="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-600 line-clamp-3 mb-4 flex-1">
+                                {t.content}
+                            </div>
+                            <div className="flex justify-between items-center mt-auto">
+                                <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded-full uppercase font-bold">{t.category}</span>
+                                <button 
+                                    onClick={() => setUseModal({ isOpen: true, template: t })}
+                                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-green-700 transition flex items-center"
+                                >
+                                    <i className="fas fa-paper-plane mr-2"></i> Sử dụng
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Use Template Modal */}
+            {useModal.isOpen && useModal.template && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 className="text-lg font-bold text-gray-800">Tạo tin nhắn: {useModal.template.title}</h3>
+                            <button onClick={() => { setUseModal({isOpen: false, template: null}); setSelectedCustomerForTemplate(null); }} className="text-gray-400 hover:text-gray-600">
+                                <i className="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-4 flex-1 overflow-y-auto">
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700">Chọn khách hàng áp dụng</label>
+                                <SearchableCustomerSelect 
+                                    customers={customers} 
+                                    value={selectedCustomerForTemplate?.fullName || ''}
+                                    onChange={setSelectedCustomerForTemplate}
+                                    placeholder="Tìm kiếm khách hàng..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700">Xem trước nội dung</label>
+                                <textarea 
+                                    className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-gray-50 h-40 focus:ring-2 focus:ring-green-200 outline-none"
+                                    value={previewContent}
+                                    onChange={(e) => setPreviewContent(e.target.value)} // Allow manual edit
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
+                            <button onClick={() => { setUseModal({isOpen: false, template: null}); setSelectedCustomerForTemplate(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Hủy</button>
+                            <button 
+                                onClick={handleCopyGenerated}
+                                disabled={!selectedCustomerForTemplate}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <i className="fas fa-copy mr-2"></i> Sao chép & Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit/Add Modal */}
+            {showModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="bg-white rounded-xl max-w-2xl w-full p-6 shadow-2xl">
+                        <h3 className="text-xl font-bold mb-4 border-b pb-2">{isEditing ? 'Sửa Mẫu Tin' : 'Tạo Mẫu Tin Mới'}</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Tiêu đề mẫu tin</label>
+                                <input className="w-full border p-2.5 rounded-lg outline-none focus:ring-1 focus:ring-pru-red" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="VD: Chúc mừng sinh nhật..." />
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Danh mục</label>
+                                    <select className="w-full border p-2.5 rounded-lg" value={formData.category} onChange={(e: any) => setFormData({ ...formData, category: e.target.value })}>
+                                        <option value="care">Chăm sóc chung</option>
+                                        <option value="birthday">Sinh nhật</option>
+                                        <option value="payment">Nhắc phí</option>
+                                        <option value="holiday">Lễ tết</option>
+                                        <option value="other">Khác</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Màu sắc (Thẻ)</label>
+                                    <select className="w-full border p-2.5 rounded-lg" value={formData.color} onChange={(e: any) => setFormData({ ...formData, color: e.target.value })}>
+                                        <option value="blue">Xanh dương</option>
+                                        <option value="red">Đỏ</option>
+                                        <option value="green">Xanh lá</option>
+                                        <option value="yellow">Vàng</option>
+                                        <option value="pink">Hồng</option>
+                                        <option value="purple">Tím</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium">Nội dung tin nhắn</label>
+                                    <div className="text-xs text-gray-500">Chèn nhanh biến:</div>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded border border-gray-100">
+                                    {[
+                                        { label: 'Tên KH', val: '{name}' },
+                                        { label: 'Số HĐ', val: '{contract}' },
+                                        { label: 'Ngày đóng', val: '{date}' },
+                                        { label: 'Số tiền', val: '{fee}' },
+                                        { label: 'Danh xưng (Anh/Chị)', val: '{gender}' }
+                                    ].map(v => (
+                                        <button 
+                                            key={v.val} 
+                                            onClick={() => insertVariable(v.val)}
+                                            className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-600 transition"
+                                        >
+                                            {v.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <textarea 
+                                    className="w-full border p-3 rounded-lg outline-none focus:ring-1 focus:ring-pru-red min-h-[150px]" 
+                                    value={formData.content} 
+                                    onChange={e => setFormData({ ...formData, content: e.target.value })} 
+                                    placeholder="Nhập nội dung tin nhắn. Sử dụng các biến trên để tự động điền dữ liệu..."
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6 border-t pt-4">
+                            <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Hủy</button>
+                            <button onClick={handleSubmit} className="px-5 py-2 bg-pru-red text-white rounded-lg font-bold hover:bg-red-700 shadow-md">Lưu</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa mẫu tin?" message="Bạn có chắc chắn muốn xóa mẫu tin này không?" onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({ isOpen: false, id: '' })} />
+        </div>
+    );
+};
 
 // --- SETTINGS PAGE (New) ---
 const SettingsPage: React.FC<{
@@ -651,7 +1151,7 @@ const SettingsPage: React.FC<{
     );
 };
 
-// --- ADVISORY PAGE (Roleplay) ---
+// --- ADVISORY PAGE (Roleplay with Objection Handling) ---
 const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile | null }> = ({ customers, agentProfile }) => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -664,12 +1164,9 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
     const [loading, setLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [copiedIndex, setCopiedIndex] = useState<number | null>(null); // Track copied status
-
-    useEffect(() => {
-        if (customer && !isGoalSet) {
-             // Reset messages when entering fresh
-        }
-    }, [customer, isGoalSet]);
+    
+    // Objection Handling State
+    const [hintLoading, setHintLoading] = useState(false);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -680,7 +1177,6 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
         setIsGoalSet(true);
         setLoading(true);
 
-        // Hidden prompt to trigger the AI to start speaking as the agent immediately
         const startPrompt = "BẮT ĐẦU_ROLEPLAY: Hãy nói câu thoại đầu tiên với khách hàng ngay bây giờ.";
 
         const response = await consultantChat(startPrompt, customer!, agentProfile, goal, []);
@@ -711,11 +1207,45 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
     };
 
     const handleCopy = (text: string, idx: number) => {
-        // Sử dụng hàm cleanMarkdownForClipboard để làm sạch văn bản trước khi copy
         const cleanText = cleanMarkdownForClipboard(text);
         navigator.clipboard.writeText(cleanText);
         setCopiedIndex(idx);
         setTimeout(() => setCopiedIndex(null), 2000);
+    };
+
+    // --- Objection Handling Function ---
+    const handleGetObjectionHint = async () => {
+        if (!customer) return;
+        setHintLoading(true);
+        
+        // Construct history context
+        const history = messages.map(m => ({
+            role: m.role,
+            parts: [{ text: m.text }]
+        }));
+
+        // Special prompt for objection handling
+        const hintPrompt = `
+            [YÊU CẦU HỖ TRỢ XỬ LÝ TỪ CHỐI]
+            Dựa trên ngữ cảnh cuộc hội thoại hiện tại, khách hàng có vẻ đang ngần ngại hoặc từ chối.
+            Hãy đóng vai người quản lý dày dạn kinh nghiệm, thì thầm nhắc bài cho tôi (tư vấn viên) 3 phương án trả lời khác nhau để xử lý tình huống này:
+            1. Phương án Đồng cảm (Em hiểu cảm giác của anh/chị...)
+            2. Phương án Logic/Số liệu (Thực tế thì...)
+            3. Phương án Đặt câu hỏi ngược (Điều gì khiến anh/chị băn khoăn nhất...)
+            
+            Trả lời ngắn gọn, từng phương án một, để tôi có thể chọn và nói ngay. Không cần chào hỏi lại.
+        `;
+
+        try {
+            const hintResponse = await consultantChat(hintPrompt, customer, agentProfile, goal, history);
+            // Append hint as a special system message locally (not sent to AI history for next turn ideally, or maybe yes)
+            // Here we treat it as a "System Whisper" displayed differently
+            setMessages(prev => [...prev, { role: 'model', text: `💡 **GỢI Ý TỪ TRỢ LÝ:**\n\n${hintResponse}` }]);
+        } catch (e) {
+            alert("Không thể lấy gợi ý lúc này.");
+        } finally {
+            setHintLoading(false);
+        }
     };
 
     if (!customer) return <div className="p-8 text-center">Khách hàng không tồn tại.</div>;
@@ -836,15 +1366,19 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
                                 {messages.map((msg, idx) => (
                                     <div key={idx} className={`flex group ${msg.role === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
                                         {msg.role === 'model' && (
-                                            <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center mr-2 shadow-sm flex-shrink-0 mt-1">
-                                                <i className="fas fa-user-tie text-xs"></i>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 shadow-sm flex-shrink-0 mt-1 ${
+                                                msg.text.includes('💡') ? 'bg-yellow-400 text-white' : 'bg-purple-600 text-white'
+                                            }`}>
+                                                <i className={`fas ${msg.text.includes('💡') ? 'fa-lightbulb' : 'fa-user-tie'} text-xs`}></i>
                                             </div>
                                         )}
                                         <div className="relative max-w-[85%]">
                                             <div className={`p-3 rounded-xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${
                                                 msg.role === 'user' 
                                                 ? 'bg-white border border-gray-200 text-gray-800' 
-                                                : 'bg-white border-l-4 border-purple-500 text-gray-800'
+                                                : msg.text.includes('💡') 
+                                                    ? 'bg-yellow-50 border border-yellow-200 text-gray-800' 
+                                                    : 'bg-white border-l-4 border-purple-500 text-gray-800'
                                             }`}>
                                                 {msg.role === 'model' ? (
                                                     <div className="prose prose-sm max-w-none text-gray-800" 
@@ -854,7 +1388,7 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
                                             </div>
 
                                             {/* Quick Copy Button for AI Messages */}
-                                            {msg.role === 'model' && (
+                                            {msg.role === 'model' && !msg.text.includes('💡') && (
                                                 <button 
                                                     onClick={() => handleCopy(msg.text, idx)}
                                                     className={`absolute -right-8 top-0 text-gray-400 hover:text-pru-red p-1.5 opacity-0 group-hover:opacity-100 transition-opacity ${copiedIndex === idx ? 'text-green-500 opacity-100' : ''}`}
@@ -880,6 +1414,20 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
                             </div>
 
                             <div className="p-4 bg-white border-t border-gray-200">
+                                {/* Objection Handling Hint Button */}
+                                {messages.length > 1 && (
+                                    <div className="flex justify-center mb-3">
+                                        <button 
+                                            onClick={handleGetObjectionHint}
+                                            disabled={hintLoading || loading}
+                                            className="text-xs flex items-center bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-full hover:bg-yellow-200 transition shadow-sm border border-yellow-200"
+                                        >
+                                            <i className={`fas ${hintLoading ? 'fa-spinner fa-spin' : 'fa-lightbulb'} mr-2`}></i>
+                                            {hintLoading ? 'Đang phân tích...' : 'Gợi ý xử lý từ chối'}
+                                        </button>
+                                    </div>
+                                )}
+                                
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
@@ -910,7 +1458,7 @@ const AdvisoryPage: React.FC<{ customers: Customer[], agentProfile: AgentProfile
 const ProductsPage: React.FC<{ 
   products: Product[], 
   onAdd: (p: Product) => void,
-  onUpdate: (p: Product) => void,
+  onUpdate: (p: Product) => void, 
   onDelete: (id: string) => void 
 }> = ({ products, onAdd, onUpdate, onDelete }) => {
     const [showModal, setShowModal] = useState(false);
@@ -1303,7 +1851,8 @@ const App: React.FC = () => {
         contracts: [],
         products: [],
         appointments: [],
-        agentProfile: null // Init as null
+        agentProfile: null,
+        messageTemplates: []
     });
 
     // --- REALTIME DATABASE SUBSCRIPTIONS ---
@@ -1312,6 +1861,7 @@ const App: React.FC = () => {
         const unsubProducts = subscribeToCollection(COLLECTIONS.PRODUCTS, (data) => setState(prev => ({ ...prev, products: data })));
         const unsubContracts = subscribeToCollection(COLLECTIONS.CONTRACTS, (data) => setState(prev => ({ ...prev, contracts: data })));
         const unsubAppointments = subscribeToCollection(COLLECTIONS.APPOINTMENTS, (data) => setState(prev => ({ ...prev, appointments: data })));
+        const unsubTemplates = subscribeToCollection(COLLECTIONS.MESSAGE_TEMPLATES, (data) => setState(prev => ({ ...prev, messageTemplates: data })));
         
         // Subscribe to Settings (Agent Profile)
         const unsubSettings = subscribeToCollection(COLLECTIONS.SETTINGS, (data) => {
@@ -1322,7 +1872,7 @@ const App: React.FC = () => {
         });
 
         return () => {
-            unsubCustomers(); unsubProducts(); unsubContracts(); unsubAppointments(); unsubSettings();
+            unsubCustomers(); unsubProducts(); unsubContracts(); unsubAppointments(); unsubSettings(); unsubTemplates();
         };
     }, []);
 
@@ -1343,6 +1893,11 @@ const App: React.FC = () => {
     const updateAppointment = async (a: Appointment) => await updateData(COLLECTIONS.APPOINTMENTS, a.id, a);
     const deleteAppointment = async (id: string) => await deleteData(COLLECTIONS.APPOINTMENTS, id);
 
+    // Template Handlers
+    const addTemplate = async (t: MessageTemplate) => await addData(COLLECTIONS.MESSAGE_TEMPLATES, t);
+    const updateTemplate = async (t: MessageTemplate) => await updateData(COLLECTIONS.MESSAGE_TEMPLATES, t.id, t);
+    const deleteTemplate = async (id: string) => await deleteData(COLLECTIONS.MESSAGE_TEMPLATES, id);
+
     // Profile Handler
     const saveProfile = async (profile: AgentProfile) => {
         if (state.agentProfile && state.agentProfile.id) {
@@ -1362,6 +1917,9 @@ const App: React.FC = () => {
                     {/* Updated Route passing Agent Profile */}
                     <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} agentProfile={state.agentProfile} />} />
                     
+                    {/* New Templates Route */}
+                    <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
+
                     {/* New Settings Route */}
                     <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} />} />
 

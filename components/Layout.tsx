@@ -16,7 +16,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/contracts', label: 'Hợp đồng', icon: 'fa-file-contract' },
     { path: '/products', label: 'Sản phẩm', icon: 'fa-book-open' },
     { path: '/appointments', label: 'Lịch hẹn', icon: 'fa-calendar-check' },
-    { path: '/settings', label: 'Cài đặt', icon: 'fa-cog' }, // New Settings Item
+    { path: '/templates', label: 'Mẫu tin nhắn', icon: 'fa-comment-alt' }, // New Item
+    { path: '/settings', label: 'Cài đặt', icon: 'fa-cog' }, 
   ];
 
   const isActive = (path: string) => location.pathname === path;

@@ -50,6 +50,28 @@ export interface CustomerAnalysis {
   readiness: ReadinessLevel;
 }
 
+export interface CustomerDocument {
+  id: string;
+  name: string;
+  url: string;
+  type: string; // 'image' | 'pdf' | 'other'
+  uploadDate: string;
+}
+
+// --- NEW RELATIONSHIP TYPES ---
+export enum RelationshipType {
+  SPOUSE = 'Vợ / Chồng',
+  PARENT = 'Bố / Mẹ',
+  CHILD = 'Con cái',
+  SIBLING = 'Anh / Chị / Em',
+  OTHER = 'Khác'
+}
+
+export interface CustomerRelationship {
+  relatedCustomerId: string;
+  relationship: RelationshipType;
+}
+
 export interface Customer {
   id: string;
   fullName: string;
@@ -60,7 +82,9 @@ export interface Customer {
   job: string;
   companyAddress: string;
   health: HealthInfo;
-  analysis: CustomerAnalysis; // New Analysis Section
+  analysis: CustomerAnalysis; 
+  documents?: CustomerDocument[]; // Digital Cabinet
+  relationships?: CustomerRelationship[]; // Family Tree
   interactionHistory: string[];
   status: CustomerStatus;
 }
@@ -150,10 +174,21 @@ export interface AgentProfile {
   bio: string; // Short self-description
 }
 
+// --- NEW MESSAGE TEMPLATE INTERFACE ---
+export interface MessageTemplate {
+  id: string;
+  title: string;
+  content: string; // Contains placeholders like {name}, {contract}
+  category: 'birthday' | 'payment' | 'care' | 'holiday' | 'other';
+  icon?: string;
+  color?: string;
+}
+
 export interface AppState {
   customers: Customer[];
   products: Product[];
   contracts: Contract[];
   appointments: Appointment[];
-  agentProfile: AgentProfile | null; // Added profile to state
+  agentProfile: AgentProfile | null;
+  messageTemplates: MessageTemplate[]; // Added templates to state
 }

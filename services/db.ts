@@ -17,7 +17,8 @@ const COLLECTIONS = {
     CONTRACTS: 'contracts',
     PRODUCTS: 'products',
     APPOINTMENTS: 'appointments',
-    SETTINGS: 'settings' // Used for Agent Profile
+    SETTINGS: 'settings', // Used for Agent Profile
+    MESSAGE_TEMPLATES: 'message_templates' // New Collection
 };
 
 // --- GENERIC FUNCTIONS ---
