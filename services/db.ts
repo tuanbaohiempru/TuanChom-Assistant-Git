@@ -7,7 +7,9 @@ import {
     deleteDoc, 
     doc, 
     query, 
-    orderBy 
+    orderBy,
+    QuerySnapshot,
+    DocumentData
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
 
@@ -31,7 +33,7 @@ export const subscribeToCollection = (collectionName: string, callback: (data: a
     // Ở đây ta lấy raw query để đơn giản hóa
     const q = query(collection(db, collectionName));
     
-    return onSnapshot(q, (snapshot) => {
+    return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
         const data = snapshot.docs.map(doc => ({
             ...doc.data(),
             id: doc.id // Ghi đè ID ảo bằng ID thật của Firestore

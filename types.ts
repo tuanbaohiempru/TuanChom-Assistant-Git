@@ -116,7 +116,8 @@ export interface ContractProduct {
 export enum ContractStatus {
   ACTIVE = 'Đang hiệu lực',
   LAPSED = 'Mất hiệu lực',
-  PENDING = 'Chờ thẩm định'
+  PENDING = 'Chờ thẩm định',
+  MATURED = 'Đáo hạn'
 }
 
 export enum PaymentFrequency {
@@ -137,6 +138,7 @@ export interface Contract {
   paymentFrequency: PaymentFrequency; 
   nextPaymentDate: string;
   status: ContractStatus;
+  beneficiary?: string; // New Field: Người thụ hưởng
 }
 
 export enum AppointmentType {
