@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppState } from '../types';
 import { chatWithData } from '../services/geminiService';
 
@@ -8,6 +8,7 @@ interface AIChatProps {
 }
 
 const AIChat: React.FC<AIChatProps> = ({ state }) => {
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false); // False = Floating, True = Side Dock
   const [query, setQuery] = useState('');
@@ -16,6 +17,9 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check if we are on the Advisory page to hide the button
+  const isAdvisoryPage = location.pathname.includes('/advisory');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,6 +98,9 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
   const containerClasses = isExpanded
     ? "fixed top-0 right-0 h-full w-[500px] max-w-full bg-white shadow-2xl flex flex-col border-l border-gray-200 z-[60] transition-all duration-300 ease-in-out" // Docked Mode
     : "fixed bottom-24 right-6 w-[400px] max-w-[90vw] h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-50"; // Floating Mode
+
+  // If in Advisory Page and NOT open, do not render the floating button
+  if (isAdvisoryPage && !isOpen) return null;
 
   return (
     <>
@@ -223,8 +230,8 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
         </div>
       )}
 
-      {/* Floating Launcher Button (Only visible when chat is closed) */}
-      {!isOpen && (
+      {/* Floating Launcher Button (Only visible when chat is closed AND NOT on Advisory Page) */}
+      {!isOpen && !isAdvisoryPage && (
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-50 group w-16 h-16 bg-gradient-to-br from-pru-red to-red-700 text-white rounded-full shadow-lg shadow-red-500/30 flex items-center justify-center transition-all hover:scale-110 hover:-translate-y-1"

@@ -1,6 +1,5 @@
-
 import { GoogleGenAI } from "@google/genai";
-import { AppState, Customer, AgentProfile } from "../types";
+import { AppState, Customer, AgentProfile, Contract } from "../types";
 
 // Helper to sanitize data for AI context (remove unnecessary UI fields if any)
 const prepareContext = (state: AppState) => {
@@ -196,34 +195,34 @@ export const consultantChat = async (
 
         const systemInstruction = `
         BẠN ĐANG THAM GIA ROLEPLAY (NHẬP VAI).
-        VAI TRÒ CỦA BẠN: Cố vấn Bảo hiểm Nhân thọ Prudential chuyên nghiệp, có tâm.
-        NGƯỜI DÙNG: Sẽ đóng vai KHÁCH HÀNG (${customer.fullName}).
+        VAI TRÒ: Cố vấn Bảo hiểm Prudential - Người bạn đồng hành tận tâm.
+        KHÁCH HÀNG: ${customer.fullName}
+        MỤC TIÊU (KPI): "${conversationGoal}"
 
         ${agentContext}
 
-        MỤC TIÊU CỤ THỂ CỦA CUỘC TRÒ CHUYỆN NÀY (KPI):
-        "${conversationGoal || 'Tìm hiểu nhu cầu và xây dựng mối quan hệ tin cậy'}"
-        -> Mọi câu trả lời của bạn cần khéo léo dẫn dắt về mục tiêu này, nhưng không được gượng ép.
-        
-        HỒ SƠ KHÁCH HÀNG BẠN ĐANG TRÒ CHUYỆN:
+        THÔNG TIN KHÁCH HÀNG:
         ${customerProfile}
 
-        NGUYÊN TẮC BẮT BUỘC:
-        1. **Không thúc ép**: Tuyệt đối không dùng những câu như "Mua ngay đi".
-        2. **Không dọa dẫm**: Không vẽ ra viễn cảnh chết chóc ghê rợn.
-        3. **Trung lập**: Luôn đứng về phía lợi ích khách hàng.
-        4. **Nhập vai tuyệt đối**: Không nói những câu ngoài lề như "Chào bạn, tôi đã sẵn sàng đóng vai...". Hãy nói chuyện trực tiếp với khách hàng.
-        5. **Khởi đầu**: Nếu nhận được yêu cầu "BẮT ĐẦU_ROLEPLAY", hãy TỰ ĐỘNG đưa ra lời chào và câu dẫn dắt đầu tiên với khách hàng để bắt đầu cuộc hội thoại theo Mục Tiêu.
+        === CHIẾN THUẬT GIAO TIẾP "PING-PONG" (BẮT BUỘC TUÂN THỦ) ===
+        1. **CHIA NHỎ NỘI DUNG**: 
+           - Tuyệt đối KHÔNG trả lời một tràng dài như đọc văn mẫu.
+           - Tối đa 2-3 câu ngắn mỗi lần trả lời.
+           - Nếu có nhiều thông tin (ví dụ quyền lợi), hãy nói từng cái một, hỏi khách xem họ thấy sao rồi mới nói tiếp.
+        
+        2. **CÂU HỎI DẪN DẮT (MICRO-CLOSING)**:
+           - LUÔN LUÔN kết thúc câu trả lời bằng một câu hỏi ngắn để nhường lời cho khách.
+           - Ví dụ: "Anh thấy điểm này sao ạ?", "Chỗ này em nói có nhanh quá không anh?", "Anh có hay lo về vấn đề này không?"
 
-        PHONG CÁCH GIAO TIẾP:
-        - Giọng điệu: Bình tĩnh, chân thành, chuyên nghiệp nhưng gần gũi.
-        - Điều chỉnh theo tính cách khách hàng: ${customer.analysis?.personality}.
+        3. **GIỌNG ĐIỆU "THỦ THỈ"**:
+           - Bỏ bớt sự trang trọng sáo rỗng. Dùng từ ngữ đời thường, gần gũi.
+           - Dùng các từ đệm: "dạ", "nhé", "à", "mà", "thực ra là", "anh ơi".
+           - Thể hiện cảm xúc: Biết khen, biết đồng cảm (VD: "Em thấy anh lo xa vậy là quá tốt cho con rồi...").
 
-        QUY TRÌNH TƯ DUY:
-        1. Phân tích câu nói của khách hàng (người dùng).
-        2. Xác định xem họ đang phản đối, thắc mắc hay đồng thuận.
-        3. Dùng kỹ thuật "Lắng nghe - Đồng cảm - Cô lập vấn đề - Giải quyết" để trả lời.
-        4. Luôn kết thúc bằng một câu hỏi mở để duy trì hội thoại hướng về Mục Tiêu.
+        4. **QUY TRÌNH TƯ DUY**:
+           - Nghe khách nói -> Đồng cảm/Khen ngợi -> Trả lời 1 ý nhỏ -> Hỏi lại khách -> Chờ phản hồi.
+
+        HÃY NHỚ: Mục tiêu không phải là thắng tranh luận, mà là làm khách hàng mở lòng.
         `;
 
         const chat = ai.chats.create({
@@ -241,5 +240,114 @@ export const consultantChat = async (
     } catch (error) {
         console.error("Advisory Chat Error:", error);
         return "Xin lỗi, kết nối với Cố vấn AI bị gián đoạn.";
+    }
+};
+
+/**
+ * Analyzes conversation and returns 3 objection handling options in JSON
+ */
+export const getObjectionAnalysis = async (
+    customer: Customer,
+    history: { role: 'user' | 'model'; parts: { text: string }[] }[]
+): Promise<{ label: string; content: string }[]> => {
+    try {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) throw new Error("API KEY Missing");
+
+        const ai = new GoogleGenAI({ apiKey });
+
+        const systemInstruction = `
+            Bạn là một HUẤN LUYỆN VIÊN BÁN HÀNG (SALES COACH) kỳ cựu của Prudential.
+            Nhiệm vụ: Phân tích đoạn hội thoại roleplay gần nhất và gợi ý cho Tư vấn viên cách trả lời.
+            
+            OUTPUT: Bắt buộc trả về định dạng JSON thuần túy (không Markdown), là một mảng gồm 3 phần tử.
+            Cấu trúc:
+            [
+                { "label": "Đồng cảm", "content": "Câu thoại mẫu..." },
+                { "label": "Logic/Số liệu", "content": "Câu thoại mẫu..." },
+                { "label": "Câu hỏi ngược", "content": "Câu thoại mẫu..." }
+            ]
+            
+            Nguyên tắc nội dung:
+            1. Ngắn gọn, tự nhiên, dễ nói.
+            2. Xưng hô phù hợp với ngữ cảnh hội thoại (Anh/Chị/Em/Mình).
+            3. Tập trung xử lý lời từ chối hoặc băn khoăn gần nhất của khách hàng.
+        `;
+
+        const chat = ai.chats.create({
+            model: 'gemini-3-flash-preview',
+            config: {
+                systemInstruction: systemInstruction,
+                temperature: 0.5,
+                responseMimeType: "application/json"
+            },
+            history: history
+        });
+
+        const result = await chat.sendMessage({ 
+            message: "Khách hàng đang có vẻ ngần ngại hoặc từ chối. Hãy cho tôi 3 phương án xử lý ngay." 
+        });
+
+        const text = result.text || "[]";
+        // Clean markdown if present (though responseMimeType should handle it, keeping safety)
+        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
+
+    } catch (error) {
+        console.error("Objection Analysis Error:", error);
+        return [];
+    }
+};
+
+/**
+ * Generates a claim guide message
+ */
+export const generateClaimSupport = async (
+    contract: Contract,
+    customer: Customer
+): Promise<string> => {
+    try {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) return "Lỗi: Chưa cấu hình API KEY.";
+        
+        const ai = new GoogleGenAI({ apiKey });
+
+        const contractInfo = JSON.stringify({
+            number: contract.contractNumber,
+            main: contract.mainProduct.productName,
+            riders: contract.riders.map(r => r.productName).join(', '),
+            customer: customer.fullName
+        });
+
+        const prompt = `
+            Bạn là trợ lý hỗ trợ bồi thường (Claim) của Prudential.
+            
+            THÔNG TIN HỢP ĐỒNG:
+            ${contractInfo}
+            
+            NHIỆM VỤ:
+            Hãy soạn một tin nhắn ngắn gọn, chuyên nghiệp (dạng tin nhắn Zalo/SMS) để Tư vấn viên gửi cho khách hàng.
+            
+            NỘI DUNG CẦN CÓ:
+            1. Lời hỏi thăm sức khỏe chân thành, ngắn gọn (Không sến).
+            2. Nhắc khách hàng chuẩn bị hồ sơ Claim. Hãy TỰ ĐỘNG SUY LUẬN dựa trên tên các sản phẩm (riders) ở trên để liệt kê các giấy tờ cần thiết. 
+               - Nếu có thẻ sức khỏe/nội trú: Cần Giấy ra viện, Hóa đơn tài chính, Bảng kê chi phí, Giấy chứng nhận phẫu thuật (nếu có).
+               - Nếu có tai nạn: Cần biên bản tai nạn/tường trình, phim chụp X-quang.
+               - Nếu có bệnh lý nghiêm trọng: Cần kết quả giải phẫu bệnh, xét nghiệm.
+            3. Hướng dẫn nộp: "Anh/Chị chụp nét các giấy tờ trên gửi qua Zalo cho em, hoặc nộp trực tiếp trên PRUOnline nhé."
+            4. Lời chúc bình an.
+            
+            LƯU Ý: Không dùng Markdown đậm/nghiêng quá nhiều, trình bày dạng text bình thường có xuống dòng để dễ copy paste.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt
+        });
+
+        return response.text || "Không thể tạo hướng dẫn.";
+    } catch (e) {
+        console.error(e);
+        return "Lỗi khi tạo hướng dẫn Claim.";
     }
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, CustomerDocument } from '../types';
+import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, CustomerDocument, ContractStatus } from '../types';
 import { ConfirmModal, formatDateVN, SearchableCustomerSelect } from '../components/Shared';
 import { uploadFile } from '../services/storage';
 
@@ -20,9 +20,12 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
     // Modal States
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'documents'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'documents' | 'contracts'>('info');
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
     const [isUploading, setIsUploading] = useState(false);
+    
+    // Quick View Contract State
+    const [viewContract, setViewContract] = useState<Contract | null>(null);
 
     // State for adding new relationship
     const [newRelCustomer, setNewRelCustomer] = useState<Customer | null>(null);
@@ -63,6 +66,9 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
         const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
         return matchesSearch && matchesStatus;
     });
+
+    // Helper to get contracts for current form customer
+    const customerContracts = contracts.filter(c => c.customerId === formData.id);
 
     const handleOpenAdd = () => {
         setFormData(defaultCustomer);
@@ -204,7 +210,11 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
             {/* Grid List */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredCustomers.map(c => (
-                    <div key={c.id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition group flex flex-col">
+                    <div 
+                        key={c.id} 
+                        onClick={() => handleOpenEdit(c)}
+                        className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition group flex flex-col cursor-pointer"
+                    >
                         <div className="p-5 flex items-start justify-between border-b border-gray-50">
                             <div className="flex items-center gap-3">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-2 ${c.gender === Gender.FEMALE ? 'bg-pink-50 text-pink-500 border-pink-100' : 'bg-blue-50 text-blue-500 border-blue-100'}`}>
@@ -241,12 +251,25 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                         </div>
 
                         <div className="p-3 bg-gray-50 rounded-b-xl border-t border-gray-100 flex justify-between items-center gap-2">
-                            <button onClick={() => navigate(`/advisory/${c.id}`)} className="flex-1 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold hover:bg-purple-200 transition flex items-center justify-center">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); navigate(`/advisory/${c.id}`); }} 
+                                className="flex-1 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold hover:bg-purple-200 transition flex items-center justify-center"
+                            >
                                 <i className="fas fa-theater-masks mr-1.5"></i>Roleplay
                             </button>
                             <div className="flex gap-1">
-                                <button onClick={() => handleOpenEdit(c)} className="w-8 h-8 rounded bg-white border border-gray-200 text-blue-500 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center"><i className="fas fa-edit"></i></button>
-                                <button onClick={() => setDeleteConfirm({isOpen: true, id: c.id, name: c.fullName})} className="w-8 h-8 rounded bg-white border border-gray-200 text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center"><i className="fas fa-trash"></i></button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(c); }} 
+                                    className="w-8 h-8 rounded bg-white border border-gray-200 text-blue-500 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center"
+                                >
+                                    <i className="fas fa-edit"></i>
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm({isOpen: true, id: c.id, name: c.fullName}); }} 
+                                    className="w-8 h-8 rounded bg-white border border-gray-200 text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center"
+                                >
+                                    <i className="fas fa-trash"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -262,12 +285,13 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times text-xl"></i></button>
                         </div>
                         
-                        <div className="flex border-b border-gray-200">
-                            <button onClick={() => setActiveTab('info')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Thông tin chung</button>
-                            <button onClick={() => setActiveTab('health')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Sức khỏe</button>
-                            <button onClick={() => setActiveTab('family')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Gia đình <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.relationships?.length || 0}</span></button>
-                            <button onClick={() => setActiveTab('documents')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'documents' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Tài liệu <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.documents?.length || 0}</span></button>
-                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Phân tích nhu cầu</button>
+                        <div className="flex border-b border-gray-200 overflow-x-auto">
+                            <button onClick={() => setActiveTab('info')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Thông tin chung</button>
+                            <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Sức khỏe</button>
+                            <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Hợp đồng <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
+                            <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Gia đình <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.relationships?.length || 0}</span></button>
+                            <button onClick={() => setActiveTab('documents')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'documents' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Tài liệu <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.documents?.length || 0}</span></button>
+                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Phân tích</button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 bg-white space-y-6">
@@ -294,6 +318,51 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                     </div>
                                     <div><label className="label-text">Tiền sử bệnh án</label><textarea rows={4} className="input-field" value={formData.health.medicalHistory} onChange={e => setFormData({...formData, health: {...formData.health, medicalHistory: e.target.value}})} placeholder="Ví dụ: Đã mổ ruột thừa năm 2020..." /></div>
                                     <div><label className="label-text">Thói quen sinh hoạt (Hút thuốc / Rượu bia)</label><textarea rows={2} className="input-field" value={formData.health.habits} onChange={e => setFormData({...formData, health: {...formData.health, habits: e.target.value}})} /></div>
+                                </div>
+                            )}
+
+                            {/* TAB: CONTRACTS (New) */}
+                            {activeTab === 'contracts' && (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="font-bold text-gray-800">Danh sách hợp đồng</h3>
+                                    </div>
+                                    {customerContracts.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {customerContracts.map(c => (
+                                                <div 
+                                                    key={c.id} 
+                                                    onClick={() => setViewContract(c)}
+                                                    className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center hover:shadow-md transition cursor-pointer group"
+                                                >
+                                                    <div>
+                                                        <h4 className="font-bold text-pru-red text-lg group-hover:underline">{c.contractNumber}</h4>
+                                                        <p className="font-medium text-gray-800">{c.mainProduct.productName}</p>
+                                                        <div className="flex gap-2 mt-1">
+                                                            {c.riders.length > 0 && (
+                                                                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">+{c.riders.length} SPBT</span>
+                                                            )}
+                                                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">{c.paymentFrequency}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="font-bold text-gray-800 mb-1">{c.totalFee.toLocaleString()} đ</div>
+                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                            c.status === ContractStatus.ACTIVE ? 'bg-green-100 text-green-700' :
+                                                            c.status === ContractStatus.LAPSED ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                                        }`}>
+                                                            {c.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                            <i className="fas fa-file-contract text-gray-300 text-4xl mb-3"></i>
+                                            <p className="text-gray-500">Khách hàng chưa có hợp đồng nào.</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             
@@ -382,7 +451,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                 </div>
                             )}
 
-                            {/* TAB: DOCUMENTS (New) */}
+                            {/* TAB: DOCUMENTS */}
                             {activeTab === 'documents' && (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-2">
@@ -452,6 +521,70 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                         <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
                             <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Hủy</button>
                             <button onClick={handleSave} className="px-5 py-2 bg-pru-red text-white font-bold rounded-lg hover:bg-red-700 shadow-md">Lưu Khách Hàng</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* QUICK VIEW CONTRACT MODAL */}
+            {viewContract && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in">
+                    <div className="bg-white rounded-xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="bg-gray-50 px-5 py-4 border-b flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-800">{viewContract.mainProduct.productName}</h3>
+                                <p className="text-pru-red font-bold text-sm mt-1">#{viewContract.contractNumber}</p>
+                            </div>
+                            <button onClick={() => setViewContract(null)} className="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-gray-600 border flex items-center justify-center"><i className="fas fa-times"></i></button>
+                        </div>
+                        <div className="p-5 overflow-y-auto space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Trạng thái</p>
+                                    <p className="font-bold text-green-700">{viewContract.status}</p>
+                                </div>
+                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                    <p className="text-xs text-gray-500 uppercase font-bold">Tổng phí đóng</p>
+                                    <p className="font-bold text-blue-700">{viewContract.totalFee.toLocaleString()} đ</p>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h4 className="font-bold text-gray-700 text-sm border-b pb-1 mb-2">Thông tin chung</h4>
+                                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                                    <p className="text-gray-500">Người được BH:</p>
+                                    <p className="font-medium text-right">{viewContract.mainProduct.insuredName}</p>
+                                    
+                                    <p className="text-gray-500">Ngày hiệu lực:</p>
+                                    <p className="font-medium text-right">{formatDateVN(viewContract.effectiveDate)}</p>
+                                    
+                                    <p className="text-gray-500">Ngày đóng phí:</p>
+                                    <p className="font-medium text-right text-red-600">{formatDateVN(viewContract.nextPaymentDate)}</p>
+
+                                    <p className="text-gray-500">Định kỳ:</p>
+                                    <p className="font-medium text-right">{viewContract.paymentFrequency}</p>
+                                </div>
+                            </div>
+
+                            {viewContract.riders.length > 0 && (
+                                <div>
+                                    <h4 className="font-bold text-gray-700 text-sm border-b pb-1 mb-2">Sản phẩm bổ trợ ({viewContract.riders.length})</h4>
+                                    <ul className="space-y-2">
+                                        {viewContract.riders.map((r, i) => (
+                                            <li key={i} className="text-sm bg-gray-50 p-2 rounded border border-gray-100">
+                                                <div className="font-medium text-gray-800">{r.productName}</div>
+                                                <div className="flex justify-between mt-1 text-xs text-gray-500">
+                                                    <span>BH: {r.sumAssured?.toLocaleString()} đ</span>
+                                                    <span>Phí: {r.fee.toLocaleString()} đ</span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 bg-gray-50 border-t text-center">
+                            <button onClick={() => setViewContract(null)} className="w-full bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded-lg hover:bg-gray-100">Đóng</button>
                         </div>
                     </div>
                 </div>

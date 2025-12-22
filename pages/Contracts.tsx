@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Contract, Customer, Product, ContractStatus, PaymentFrequency, ProductType, ContractProduct } from '../types';
 import { ConfirmModal, SearchableCustomerSelect, CurrencyInput, formatDateVN } from '../components/Shared';
+import { generateClaimSupport } from '../services/geminiService';
 
 interface ContractsPageProps {
     contracts: Contract[];
@@ -18,6 +19,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     const [viewContract, setViewContract] = useState<Contract | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
+
+    // --- CLAIM SUPPORT STATES ---
+    const [claimModal, setClaimModal] = useState<{isOpen: boolean, contract: Contract | null, customer: Customer | null}>({ isOpen: false, contract: null, customer: null });
+    const [claimGuide, setClaimGuide] = useState('');
+    const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
 
     // --- FILTER STATES ---
     const [searchTerm, setSearchTerm] = useState('');
@@ -86,6 +92,63 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         const riderFees = (data.riders || []).reduce((sum, r) => sum + (r.fee || 0), 0);
         return mainFee + riderFees;
     };
+
+    // --- CLAIM LOGIC ---
+    const handleOpenClaim = async (contract: Contract) => {
+        const customer = customers.find(c => c.id === contract.customerId) || null;
+        if (!customer) return alert("Không tìm thấy thông tin khách hàng");
+        
+        setClaimModal({ isOpen: true, contract, customer });
+        setClaimGuide('');
+        setIsGeneratingGuide(true);
+
+        // Call AI Service
+        try {
+            const guide = await generateClaimSupport(contract, customer);
+            setClaimGuide(guide);
+        } catch (error) {
+            setClaimGuide("Không thể tạo hướng dẫn tự động. Vui lòng thử lại.");
+        } finally {
+            setIsGeneratingGuide(false);
+        }
+    };
+
+    const getSuggestedDocuments = (contract: Contract): string[] => {
+        const docs = new Set<string>();
+        // Always required
+        docs.add("Phiếu yêu cầu giải quyết quyền lợi (Form)");
+        docs.add("CCCD/CMND người nhận quyền lợi");
+
+        // Check products
+        const allProducts = [contract.mainProduct.productName, ...contract.riders.map(r => r.productName)].join(' ').toLowerCase();
+
+        if (allProducts.includes('sức khỏe') || allProducts.includes('nội trú') || allProducts.includes('y tế')) {
+            docs.add("Giấy ra viện (Bản chính/Sao y)");
+            docs.add("Bảng kê chi tiết viện phí");
+            docs.add("Hóa đơn tài chính (Hóa đơn đỏ/điện tử)");
+            docs.add("Giấy chứng nhận phẫu thuật (nếu có)");
+        }
+
+        if (allProducts.includes('tai nạn')) {
+            docs.add("Biên bản tai nạn / Bản tường trình tai nạn");
+            docs.add("Phim chụp X-Quang/CT và kết quả đọc phim");
+            docs.add("Giấy phép lái xe (nếu tự lái xe)");
+        }
+
+        if (allProducts.includes('bệnh hiểm nghèo') || allProducts.includes('bệnh lý')) {
+            docs.add("Kết quả giải phẫu bệnh (Sinh thiết)");
+            docs.add("Các xét nghiệm y khoa chẩn đoán bệnh");
+        }
+
+        if (allProducts.includes('tử vong') || allProducts.includes('nhân thọ')) {
+            docs.add("Trích lục khai tử");
+            docs.add("Giấy xác nhận nguyên nhân tử vong");
+            docs.add("Hồ sơ bệnh án (nếu tử vong do bệnh)");
+        }
+
+        return Array.from(docs);
+    };
+
 
     // --- HANDLERS ---
     const handleOpenAdd = () => { 
@@ -393,26 +456,6 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                             ))}
                                         </div>
                                     </div>
-                                    
-                                    {/* Mock Cash Value Table */}
-                                    <div>
-                                        <h3 className="font-bold text-gray-800 border-b pb-2 mb-3">Giá trị hoàn lại (Ước tính)</h3>
-                                        <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
-                                            <div className="grid grid-cols-3 font-bold border-b border-gray-200 pb-2 mb-2">
-                                                <div>Năm HĐ</div>
-                                                <div className="text-right">Phiếu tiền mặt</div>
-                                                <div className="text-right">Hoàn lại</div>
-                                            </div>
-                                            {[1, 5, 10, 15, 20].map(y => (
-                                                <div key={y} className="grid grid-cols-3 py-1">
-                                                    <div>Năm thứ {y}</div>
-                                                    <div className="text-right text-gray-500">{(viewContract.totalFee * y * 0.05).toLocaleString()} đ</div>
-                                                    <div className="text-right font-bold text-gray-800">{(viewContract.totalFee * y * (y > 10 ? 0.8 : 0.3)).toLocaleString()} đ</div>
-                                                </div>
-                                            ))}
-                                            <p className="text-[10px] text-gray-400 mt-2 italic">* Số liệu minh họa giả định dựa trên mức phí đóng.</p>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 {/* Sidebar Info */}
@@ -439,8 +482,87 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                         <button onClick={() => handleCopyReminder(viewContract)} className="w-full py-2 bg-white border border-gray-200 rounded-lg text-gray-700 text-sm font-medium hover:bg-gray-50 hover:text-pru-red transition flex items-center justify-center">
                                             <i className="fas fa-bell mr-2"></i> Nhắc đóng phí
                                         </button>
-                                        <button className="w-full py-2 bg-white border border-gray-200 rounded-lg text-gray-700 text-sm font-medium hover:bg-gray-50 hover:text-blue-600 transition flex items-center justify-center">
+                                        <button 
+                                            onClick={() => handleOpenClaim(viewContract)}
+                                            className="w-full py-2 bg-white border border-gray-200 rounded-lg text-gray-700 text-sm font-medium hover:bg-gray-50 hover:text-blue-600 transition flex items-center justify-center"
+                                        >
                                             <i className="fas fa-file-medical-alt mr-2"></i> Hỗ trợ bồi thường (Claim)
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CLAIM SUPPORT MODAL (NEW) */}
+            {claimModal.isOpen && claimModal.contract && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                        <div className="bg-blue-600 px-6 py-4 flex justify-between items-center text-white">
+                            <div>
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <i className="fas fa-hand-holding-medical"></i> Hỗ trợ Giải quyết Quyền lợi (Claim)
+                                </h2>
+                                <p className="text-xs text-blue-100 mt-1">Hợp đồng: {claimModal.contract.contractNumber} • Khách hàng: {claimModal.customer?.fullName}</p>
+                            </div>
+                            <button onClick={() => setClaimModal({isOpen: false, contract: null, customer: null})} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white"><i className="fas fa-times"></i></button>
+                        </div>
+
+                        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                            {/* Column 1: Static Document Checklist (Option A) */}
+                            <div className="w-full md:w-1/3 bg-gray-50 border-r border-gray-200 p-5 overflow-y-auto">
+                                <h3 className="font-bold text-gray-800 text-sm uppercase mb-4 flex items-center text-blue-600">
+                                    <i className="fas fa-clipboard-check mr-2"></i> Hồ sơ tiêu chuẩn
+                                </h3>
+                                <div className="space-y-2">
+                                    {getSuggestedDocuments(claimModal.contract).map((doc, idx) => (
+                                        <div key={idx} className="flex items-start p-3 bg-white border border-gray-200 rounded-lg">
+                                            <i className="fas fa-check-circle text-green-500 mt-0.5 mr-2.5"></i>
+                                            <span className="text-sm text-gray-700 font-medium">{doc}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-6 p-4 bg-blue-100 rounded-xl text-xs text-blue-800 leading-relaxed border border-blue-200">
+                                    <i className="fas fa-info-circle mr-1"></i>
+                                    <b>Lưu ý:</b> Đây là danh sách gợi ý dựa trên sản phẩm đã tham gia. Vui lòng kiểm tra thực tế sự kiện bảo hiểm (Tai nạn / Bệnh / ...) để yêu cầu chính xác.
+                                </div>
+                            </div>
+
+                            {/* Column 2: AI Message Generator (Option C) */}
+                            <div className="flex-1 p-6 flex flex-col bg-white">
+                                <h3 className="font-bold text-gray-800 text-sm uppercase mb-3 flex items-center text-purple-600">
+                                    <i className="fas fa-magic mr-2"></i> Soạn tin nhắn hướng dẫn (AI)
+                                </h3>
+                                
+                                {isGeneratingGuide ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                                        <i className="fas fa-robot fa-spin text-3xl mb-3 text-purple-400"></i>
+                                        <p className="text-sm">Đang soạn thảo hướng dẫn...</p>
+                                    </div>
+                                ) : (
+                                    <textarea 
+                                        className="flex-1 w-full border border-gray-200 rounded-xl p-4 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-300 resize-none font-sans text-gray-700 shadow-inner"
+                                        value={claimGuide}
+                                        onChange={(e) => setClaimGuide(e.target.value)}
+                                        placeholder="Nội dung hướng dẫn..."
+                                    />
+                                )}
+
+                                <div className="mt-4 flex justify-between items-center">
+                                    <span className="text-xs text-gray-400 italic">Bạn có thể chỉnh sửa nội dung trước khi gửi.</span>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setClaimModal({isOpen: false, contract: null, customer: null})} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-bold">Đóng</button>
+                                        <button 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(claimGuide);
+                                                alert("Đã sao chép nội dung!");
+                                            }}
+                                            disabled={isGeneratingGuide || !claimGuide}
+                                            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md flex items-center disabled:opacity-50"
+                                        >
+                                            <i className="fas fa-copy mr-2"></i> Sao chép gửi khách
                                         </button>
                                     </div>
                                 </div>
