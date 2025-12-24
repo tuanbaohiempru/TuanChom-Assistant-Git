@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -7,13 +8,22 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
     <script>
+      // Initialize theme before content renders to prevent flickering
+      if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             colors: {
               pru: {
                 red: '#ed1b2e',
-                dark: '#2c2c2c',
+                dark: '#121212',
+                card: '#1e1e1e',
                 gray: '#f3f4f6'
               }
             }
@@ -26,6 +36,9 @@
       body {
         font-family: 'Inter', sans-serif;
         background-color: #f3f4f6;
+      }
+      .dark body {
+        background-color: #121212;
       }
       /* Custom scrollbar for chat */
       .scrollbar-hide::-webkit-scrollbar {
@@ -48,7 +61,8 @@
     "vite": "https://esm.sh/vite@^7.3.0",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "firebase/": "https://esm.sh/firebase@^12.7.0/",
-    "xlsx": "https://esm.sh/xlsx@0.18.5"
+    "xlsx": "https://esm.sh/xlsx@0.18.5",
+    "qrcode.react": "https://esm.sh/qrcode.react@^4.2.0"
   }
 }
 </script>

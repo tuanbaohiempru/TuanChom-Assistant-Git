@@ -43,6 +43,9 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
     const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
     const [input, setInput] = useState('');
     const [goal, setGoal] = useState('');
+    // New State for Tone
+    const [selectedTone, setSelectedTone] = useState<string>('professional'); // 'professional' | 'friendly' | 'direct'
+    
     const [isGoalSet, setIsGoalSet] = useState(false);
     const [loading, setLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -59,15 +62,16 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
         setLoading(true);
         const startPrompt = "BẮT ĐẦU_ROLEPLAY: Hãy nói câu thoại đầu tiên với khách hàng ngay bây giờ.";
         
-        // Pass familyContext to chat service
+        // Pass familyContext and TONE to chat service
         const response = await consultantChat(
             startPrompt, 
             customer!, 
             customerContracts, 
-            familyContext, // New Param
+            familyContext, 
             agentProfile, 
             goal, 
-            []
+            [],
+            selectedTone // Pass selected tone
         );
         setMessages([{ role: 'model', text: response }]);
         setLoading(false);
@@ -82,15 +86,16 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
 
         const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
         
-        // Pass familyContext to chat service
+        // Pass familyContext and TONE to chat service
         const response = await consultantChat(
             userMsg, 
             customer, 
             customerContracts, 
-            familyContext, // New Param
+            familyContext, 
             agentProfile, 
             goal, 
-            history
+            history,
+            selectedTone // Pass selected tone
         );
         setMessages(prev => [...prev, { role: 'model', text: response }]);
         setLoading(false);
@@ -124,7 +129,8 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                 familyContext, 
                 agentProfile, 
                 goal, 
-                history
+                history,
+                selectedTone
             );
             setMessages(prev => [...prev, { role: 'model', text: `💡 **GỢI Ý TỪ TRỢ LÝ:**\n\n${hintResponse}` }]);
         } catch (e) {
@@ -162,16 +168,67 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                 {/* Left Panel */}
                 <div className="w-80 bg-white border-r border-gray-200 p-4 overflow-y-auto hidden lg:block">
                     <div className="mb-6">
-                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Mục tiêu cuộc gọi</label>
+                        <label className="block text-xs font-bold text-gray-700 mb-2 uppercase">Mục tiêu & Giọng điệu</label>
                         {isGoalSet ? (
-                            <div className="bg-green-50 p-3 rounded-lg border border-green-200 text-sm text-green-800">
-                                <i className="fas fa-bullseye mr-2"></i>{goal}
-                                <button onClick={() => setIsGoalSet(false)} className="block text-xs text-green-600 underline mt-2 hover:text-green-800">Thay đổi</button>
+                            <div className="space-y-3">
+                                <div className="bg-green-50 p-3 rounded-lg border border-green-200 text-sm text-green-800">
+                                    <div className="font-bold text-xs uppercase mb-1 text-green-600">Mục tiêu</div>
+                                    <i className="fas fa-bullseye mr-2"></i>{goal}
+                                </div>
+                                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-sm text-purple-800">
+                                    <div className="font-bold text-xs uppercase mb-1 text-purple-600">Giọng điệu</div>
+                                    <i className="fas fa-volume-up mr-2"></i>
+                                    {selectedTone === 'professional' ? 'Chuyên nghiệp (Dạ/Thưa)' : 
+                                     selectedTone === 'friendly' ? 'Thân thiện (Mình/Bạn)' : 'Sắc sảo (Dứt khoát)'}
+                                </div>
+                                <button onClick={() => setIsGoalSet(false)} className="block text-xs text-gray-500 underline mt-2 hover:text-gray-800 w-full text-center">Thay đổi thiết lập</button>
                             </div>
                         ) : (
-                            <div className="space-y-2">
-                                <textarea className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-200 outline-none" rows={3} placeholder="VD: Chốt hợp đồng..." value={goal} onChange={e => setGoal(e.target.value)}/>
-                                <button onClick={startSession} className="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition">Bắt đầu Roleplay</button>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-gray-500 mb-1 block">1. Mục tiêu cuộc gặp</label>
+                                    <textarea className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-200 outline-none" rows={2} placeholder="VD: Chốt hợp đồng..." value={goal} onChange={e => setGoal(e.target.value)}/>
+                                </div>
+                                
+                                <div>
+                                    <label className="text-xs text-gray-500 mb-2 block">2. Chọn giọng điệu AI</label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <button 
+                                            onClick={() => setSelectedTone('professional')}
+                                            className={`flex items-center p-2 rounded-lg text-xs font-medium border transition text-left ${selectedTone === 'professional' ? 'bg-purple-50 border-purple-300 text-purple-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${selectedTone === 'professional' ? 'bg-purple-200' : 'bg-gray-100'}`}><i className="fas fa-user-tie"></i></div>
+                                            <div>
+                                                <div className="font-bold">Chuyên nghiệp</div>
+                                                <div className="text-[10px] opacity-70">Lịch sự, xưng "Em" - "Anh/Chị" (Có Dạ/Thưa)</div>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => setSelectedTone('friendly')}
+                                            className={`flex items-center p-2 rounded-lg text-xs font-medium border transition text-left ${selectedTone === 'friendly' ? 'bg-green-50 border-green-300 text-green-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${selectedTone === 'friendly' ? 'bg-green-200' : 'bg-gray-100'}`}><i className="fas fa-users"></i></div>
+                                            <div>
+                                                <div className="font-bold">Thân thiện</div>
+                                                <div className="text-[10px] opacity-70">Gần gũi, xưng "Mình/Bạn" hoặc Tên</div>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => setSelectedTone('direct')}
+                                            className={`flex items-center p-2 rounded-lg text-xs font-medium border transition text-left ${selectedTone === 'direct' ? 'bg-orange-50 border-orange-300 text-orange-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${selectedTone === 'direct' ? 'bg-orange-200' : 'bg-gray-100'}`}><i className="fas fa-briefcase"></i></div>
+                                            <div>
+                                                <div className="font-bold">Sắc sảo (Chuyên gia)</div>
+                                                <div className="text-[10px] opacity-70">Xưng "Em" dứt khoát, đi thẳng vấn đề</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button onClick={startSession} className="w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition shadow-md">Bắt đầu Roleplay</button>
                             </div>
                         )}
                     </div>
@@ -235,10 +292,17 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                     {!isGoalSet ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500">
                              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 text-purple-500 text-2xl"><i className="fas fa-bullseye"></i></div>
-                             <h2 className="text-xl font-bold text-gray-800 mb-2">Thiết lập mục tiêu</h2>
-                             <p className="max-w-md">Vui lòng nhập mục tiêu của cuộc trò chuyện bên cột trái để AI có thể hỗ trợ bạn tốt nhất.</p>
-                             <div className="lg:hidden w-full max-w-md mt-6">
-                                <textarea className="w-full border border-gray-300 rounded-lg p-3 text-sm mb-3" rows={3} placeholder="Nhập mục tiêu..." value={goal} onChange={e => setGoal(e.target.value)}/>
+                             <h2 className="text-xl font-bold text-gray-800 mb-2">Thiết lập kịch bản</h2>
+                             <p className="max-w-md">Vui lòng nhập mục tiêu và chọn giọng điệu phù hợp với khách hàng này ở cột bên trái.</p>
+                             
+                             {/* Mobile Only Form */}
+                             <div className="lg:hidden w-full max-w-md mt-6 space-y-4">
+                                <input className="w-full border border-gray-300 rounded-lg p-3 text-sm" placeholder="Nhập mục tiêu..." value={goal} onChange={e => setGoal(e.target.value)}/>
+                                <select className="w-full border border-gray-300 rounded-lg p-3 text-sm" value={selectedTone} onChange={e => setSelectedTone(e.target.value)}>
+                                    <option value="professional">Chuyên nghiệp (Dạ/Thưa)</option>
+                                    <option value="friendly">Thân thiện (Mình/Bạn)</option>
+                                    <option value="direct">Sắc sảo (Dứt khoát)</option>
+                                </select>
                                 <button onClick={startSession} className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold">Bắt đầu</button>
                              </div>
                         </div>

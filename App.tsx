@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
@@ -10,6 +11,7 @@ import AppointmentsPage from './pages/Appointments';
 import MessageTemplatesPage from './pages/MessageTemplates';
 import SettingsPage from './pages/Settings';
 import AdvisoryPage from './pages/Advisory';
+import MarketingPage from './pages/Marketing';
 
 import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
@@ -23,6 +25,22 @@ const App: React.FC = () => {
         agentProfile: null,
         messageTemplates: []
     });
+
+    const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+        return localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    });
+
+    useEffect(() => {
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark');
+            localStorage.theme = 'dark';
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.theme = 'light';
+        }
+    }, [isDarkMode]);
+
+    const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
     // --- REALTIME DATABASE SUBSCRIPTIONS ---
     useEffect(() => {
@@ -77,8 +95,9 @@ const App: React.FC = () => {
                     <Route path="/contracts" element={<ContractsPage contracts={state.contracts} customers={state.customers} products={state.products} onAdd={addContract} onUpdate={updateContract} onDelete={deleteContract} />} />
                     <Route path="/products" element={<ProductsPage products={state.products} onAdd={addProduct} onUpdate={updateProduct} onDelete={deleteProduct} />} />
                     <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
+                    <Route path="/marketing" element={<MarketingPage profile={state.agentProfile} />} />
                     <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
-                    <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} />} />
+                    <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
                     <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

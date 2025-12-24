@@ -179,12 +179,17 @@ export interface Appointment {
   outcomeNote?: string;
 }
 
-// --- NEW AGENT PROFILE INTERFACE ---
+// --- UPDATED AGENT PROFILE INTERFACE ---
 export interface AgentProfile {
   id?: string;
   fullName: string;
   age: number;
   address: string;
+  phone?: string; // New
+  email?: string; // New
+  zalo?: string; // New
+  facebook?: string; // New
+  avatarUrl?: string; // New
   office: string;
   agentCode: string;
   title: string; // e.g. MDRT, MBA, Chuyên viên cao cấp

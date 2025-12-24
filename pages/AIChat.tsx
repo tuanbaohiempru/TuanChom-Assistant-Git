@@ -104,7 +104,7 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
     setIsLoading(false);
   };
 
-  // --- Advanced Message Formatter (Preserved from previous step) ---
+  // --- Advanced Message Formatter ---
   const formatMessage = (text: string) => {
     let html = text;
     html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -151,16 +151,17 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
   };
 
   // Dynamic Classes based on Expanded State
+  // Moved to LEFT-6 instead of RIGHT-6
   const containerClasses = isExpanded
     ? "fixed top-0 right-0 h-full w-[500px] max-w-full bg-white shadow-2xl flex flex-col border-l border-gray-200 z-[60] transition-all duration-300 ease-in-out" // Docked Mode
-    : "fixed bottom-24 right-6 w-[400px] max-w-[90vw] h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-50"; // Floating Mode
+    : "fixed bottom-24 left-6 w-[400px] max-w-[90vw] h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-50"; // Floating Mode (Moved to Left)
 
   // If in Advisory Page and NOT open, do not render the floating button
   if (isAdvisoryPage && !isOpen) return null;
 
   return (
     <>
-      {/* Dimmed Background when Expanded (Optional, adds focus) */}
+      {/* Dimmed Background when Expanded */}
       {isOpen && isExpanded && (
         <div 
             className="fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[55] transition-opacity" 
@@ -187,7 +188,6 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
                 </div>
             </div>
             <div className="flex gap-1">
-                 {/* Expand/Collapse Toggle */}
                  <button 
                     onClick={() => setIsExpanded(!isExpanded)} 
                     className="text-white/80 hover:bg-white/10 p-2 rounded transition w-8 h-8 flex items-center justify-center" 
@@ -282,7 +282,7 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
                 <input
                     type="text"
                     className="w-full pl-14 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all placeholder-gray-400 text-gray-700"
-                    placeholder={isListening ? "Đang nghe..." : "Hỏi PruMate (hoặc bấm micro để nói)..."}
+                    placeholder={isListening ? "Đang nghe..." : "Hỏi PruMate (hoặc micro để nói)..."}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -306,11 +306,11 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
         </div>
       )}
 
-      {/* Floating Launcher Button (Only visible when chat is closed AND NOT on Advisory Page) */}
+      {/* Floating Launcher Button - MOVED TO LEFT-6 */}
       {!isOpen && !isAdvisoryPage && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 group w-16 h-16 bg-gradient-to-br from-pru-red to-red-700 text-white rounded-full shadow-lg shadow-red-500/30 flex items-center justify-center transition-all hover:scale-110 hover:-translate-y-1"
+          className="fixed bottom-6 left-6 z-50 group w-16 h-16 bg-gradient-to-br from-pru-red to-red-700 text-white rounded-full shadow-lg shadow-red-500/30 flex items-center justify-center transition-all hover:scale-110 hover:-translate-y-1"
         >
           <span className="absolute w-full h-full rounded-full bg-red-400 opacity-75 animate-ping group-hover:opacity-0"></span>
           <i className="fas fa-comment-dots text-2xl relative z-10"></i>
@@ -318,8 +318,8 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
           {/* Badge */}
           <span className="absolute top-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full z-20"></span>
           
-          {/* Tooltip */}
-          <span className="absolute right-full mr-3 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          {/* Tooltip - MOVED TO RIGHT SIDE OF BUTTON */}
+          <span className="absolute left-full ml-3 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
             Hỏi PruMate AI
           </span>
         </button>
