@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, CustomerDocument, ContractStatus } from '../types';
@@ -189,7 +190,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
         <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h1 className="text-2xl font-bold text-gray-800">Quản lý Khách hàng</h1>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Quản lý Khách hàng</h1>
                 <div className="flex gap-3">
                     <button 
                         onClick={() => setShowImportModal(true)}
@@ -204,20 +205,20 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
             </div>
 
             {/* Filters */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+            <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row gap-4 items-center transition-colors">
                 <div className="relative w-full md:w-1/3">
                     <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
                     <input 
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-pru-red outline-none"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:ring-1 focus:ring-pru-red outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
                         placeholder="Tìm tên, SĐT, CCCD..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
                 <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
-                    <button onClick={() => setFilterStatus('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border ${filterStatus === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-500 border-gray-200'}`}>Tất cả</button>
+                    <button onClick={() => setFilterStatus('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border ${filterStatus === 'all' ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-900 border-gray-800 dark:border-white' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'}`}>Tất cả</button>
                     {Object.values(CustomerStatus).map(s => (
-                        <button key={s} onClick={() => setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border ${filterStatus === s ? 'bg-red-50 text-pru-red border-red-200' : 'bg-white text-gray-500 border-gray-200'}`}>
+                        <button key={s} onClick={() => setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border ${filterStatus === s ? 'bg-red-50 dark:bg-red-900/20 text-pru-red border-red-200 dark:border-red-900/30' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'}`}>
                             {s}
                         </button>
                     ))}
@@ -230,60 +231,60 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                     <div 
                         key={c.id} 
                         onClick={() => handleOpenEdit(c)}
-                        className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition group flex flex-col cursor-pointer"
+                        className="bg-white dark:bg-pru-card rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition group flex flex-col cursor-pointer"
                     >
-                        <div className="p-5 flex items-start justify-between border-b border-gray-50">
+                        <div className="p-5 flex items-start justify-between border-b border-gray-50 dark:border-gray-800">
                             <div className="flex items-center gap-3">
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-2 ${c.gender === Gender.FEMALE ? 'bg-pink-50 text-pink-500 border-pink-100' : 'bg-blue-50 text-blue-500 border-blue-100'}`}>
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-2 ${c.gender === Gender.FEMALE ? 'bg-pink-50 dark:bg-pink-900/20 text-pink-500 border-pink-100 dark:border-pink-900/30' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-500 border-blue-100 dark:border-blue-900/30'}`}>
                                     {c.fullName.charAt(0)}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-800 line-clamp-1" title={c.fullName}>{c.fullName}</h3>
-                                    <p className="text-xs text-gray-500">{c.job || 'Chưa cập nhật nghề'}</p>
+                                    <h3 className="font-bold text-gray-800 dark:text-gray-100 line-clamp-1" title={c.fullName}>{c.fullName}</h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{c.job || 'Chưa cập nhật nghề'}</p>
                                 </div>
                             </div>
                             <span className={`w-2 h-2 rounded-full ${c.status === CustomerStatus.SIGNED ? 'bg-green-500' : c.status === CustomerStatus.ADVISING ? 'bg-yellow-500' : 'bg-gray-300'}`} title={c.status}></span>
                         </div>
                         
                         <div className="p-5 space-y-3 flex-1">
-                            <div className="flex items-center text-sm text-gray-600">
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                                 <i className="fas fa-phone-alt w-5 text-gray-400 text-xs"></i>
                                 <span>{c.phone}</span>
                             </div>
-                            <div className="flex items-center text-sm text-gray-600">
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                                 <i className="fas fa-birthday-cake w-5 text-gray-400 text-xs"></i>
                                 <span>{formatDateVN(c.dob) || '--/--/----'}</span>
                             </div>
-                            <div className="flex items-center text-sm text-gray-600">
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                                 <i className="fas fa-file-contract w-5 text-gray-400 text-xs"></i>
                                 <span>{getActiveContractCount(c.id)} HĐ hiệu lực</span>
                             </div>
                             <div className="flex flex-wrap gap-1 pt-2">
                                 <span className={`text-[10px] px-2 py-0.5 rounded border ${
-                                    c.analysis?.readiness === ReadinessLevel.HOT ? 'bg-red-50 text-red-600 border-red-100' :
-                                    c.analysis?.readiness === ReadinessLevel.WARM ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-gray-50 text-gray-500 border-gray-200'
+                                    c.analysis?.readiness === ReadinessLevel.HOT ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30' :
+                                    c.analysis?.readiness === ReadinessLevel.WARM ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-100 dark:border-orange-900/30' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
                                 }`}>{c.analysis?.readiness || 'N/A'}</span>
-                                <span className="text-[10px] px-2 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-200">{c.analysis?.personality || 'N/A'}</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">{c.analysis?.personality || 'N/A'}</span>
                             </div>
                         </div>
 
-                        <div className="p-3 bg-gray-50 rounded-b-xl border-t border-gray-100 flex justify-between items-center gap-2">
+                        <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl border-t border-gray-100 dark:border-gray-800 flex justify-between items-center gap-2">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); navigate(`/advisory/${c.id}`); }} 
-                                className="flex-1 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold hover:bg-purple-200 transition flex items-center justify-center"
+                                className="flex-1 py-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-bold hover:bg-purple-200 dark:hover:bg-purple-900/50 transition flex items-center justify-center"
                             >
                                 <i className="fas fa-theater-masks mr-1.5"></i>Roleplay
                             </button>
                             <div className="flex gap-1">
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handleOpenEdit(c); }} 
-                                    className="w-8 h-8 rounded bg-white border border-gray-200 text-blue-500 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center"
+                                    className="w-8 h-8 rounded bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-blue-500 dark:text-blue-400 hover:border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-center"
                                 >
                                     <i className="fas fa-edit"></i>
                                 </button>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); setDeleteConfirm({isOpen: true, id: c.id, name: c.fullName}); }} 
-                                    className="w-8 h-8 rounded bg-white border border-gray-200 text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center"
+                                    className="w-8 h-8 rounded bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-red-500 dark:text-red-400 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center"
                                 >
                                     <i className="fas fa-trash"></i>
                                 </button>
@@ -293,26 +294,25 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                 ))}
             </div>
 
-            {/* ADD/EDIT MODAL - Keeping existing code structure ... */}
-            {/* ... (The content of the Add/Edit modal remains the same as previous) ... */}
+            {/* ADD/EDIT MODAL */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
-                    <div className="bg-white rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-                        <div className="p-5 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Cập nhật Khách Hàng' : 'Thêm Khách Hàng Mới'}</h3>
-                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times text-xl"></i></button>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white dark:bg-pru-card rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 transition-colors">
+                        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{isEditing ? 'Cập nhật Khách Hàng' : 'Thêm Khách Hàng Mới'}</h3>
+                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i className="fas fa-times text-xl"></i></button>
                         </div>
                         
-                        <div className="flex border-b border-gray-200 overflow-x-auto">
-                            <button onClick={() => setActiveTab('info')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Thông tin chung</button>
-                            <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Sức khỏe</button>
-                            <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Hợp đồng <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
-                            <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Gia đình <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.relationships?.length || 0}</span></button>
-                            <button onClick={() => setActiveTab('documents')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'documents' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Tài liệu <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full ml-1">{formData.documents?.length || 0}</span></button>
-                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Phân tích</button>
+                        <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto bg-white dark:bg-pru-card">
+                            <button onClick={() => setActiveTab('info')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Thông tin chung</button>
+                            <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Sức khỏe</button>
+                            <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Hợp đồng <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
+                            <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Gia đình <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded-full ml-1">{formData.relationships?.length || 0}</span></button>
+                            <button onClick={() => setActiveTab('documents')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'documents' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Tài liệu <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded-full ml-1">{formData.documents?.length || 0}</span></button>
+                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Phân tích</button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 bg-white space-y-6">
+                        <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-pru-card space-y-6">
                             {/* TAB: INFO */}
                             {activeTab === 'info' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -343,7 +343,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                             {activeTab === 'contracts' && (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-2">
-                                        <h3 className="font-bold text-gray-800">Danh sách hợp đồng</h3>
+                                        <h3 className="font-bold text-gray-800 dark:text-gray-100">Danh sách hợp đồng</h3>
                                     </div>
                                     {customerContracts.length > 0 ? (
                                         <div className="space-y-3">
@@ -351,23 +351,23 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                                 <div 
                                                     key={c.id} 
                                                     onClick={() => setViewContract(c)}
-                                                    className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center hover:shadow-md transition cursor-pointer group"
+                                                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 flex justify-between items-center hover:shadow-md transition cursor-pointer group"
                                                 >
                                                     <div>
                                                         <h4 className="font-bold text-pru-red text-lg group-hover:underline">{c.contractNumber}</h4>
-                                                        <p className="font-medium text-gray-800">{c.mainProduct.productName}</p>
+                                                        <p className="font-medium text-gray-800 dark:text-gray-200">{c.mainProduct.productName}</p>
                                                         <div className="flex gap-2 mt-1">
                                                             {c.riders.length > 0 && (
-                                                                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">+{c.riders.length} SPBT</span>
+                                                                <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded">+{c.riders.length} SPBT</span>
                                                             )}
-                                                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">{c.paymentFrequency}</span>
+                                                            <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded">{c.paymentFrequency}</span>
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <div className="font-bold text-gray-800 mb-1">{c.totalFee.toLocaleString()} đ</div>
+                                                        <div className="font-bold text-gray-800 dark:text-gray-200 mb-1">{c.totalFee.toLocaleString()} đ</div>
                                                         <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                                            c.status === ContractStatus.ACTIVE ? 'bg-green-100 text-green-700' :
-                                                            c.status === ContractStatus.LAPSED ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                                            c.status === ContractStatus.ACTIVE ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                                                            c.status === ContractStatus.LAPSED ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
                                                         }`}>
                                                             {c.status}
                                                         </span>
@@ -376,9 +376,9 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                                            <i className="fas fa-file-contract text-gray-300 text-4xl mb-3"></i>
-                                            <p className="text-gray-500">Khách hàng chưa có hợp đồng nào.</p>
+                                        <div className="text-center py-10 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+                                            <i className="fas fa-file-contract text-gray-300 dark:text-gray-600 text-4xl mb-3"></i>
+                                            <p className="text-gray-500 dark:text-gray-400">Khách hàng chưa có hợp đồng nào.</p>
                                         </div>
                                     )}
                                 </div>
@@ -387,14 +387,14 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                             {/* TAB: FAMILY */}
                             {activeTab === 'family' && (
                                 <div className="space-y-6">
-                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                    <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                         <div className="flex justify-between items-center mb-3">
-                                            <h4 className="font-bold text-blue-800 text-sm">Thêm mối quan hệ</h4>
-                                            <span className="text-xs text-blue-600 italic">Thêm thành viên để bán chéo sản phẩm</span>
+                                            <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">Thêm mối quan hệ</h4>
+                                            <span className="text-xs text-blue-600 dark:text-blue-400 italic">Thêm thành viên để bán chéo sản phẩm</span>
                                         </div>
                                         <div className="flex flex-col md:flex-row gap-3 items-end">
                                             <div className="flex-1 w-full">
-                                                <label className="label-text text-blue-800">Chọn người thân (Đã có trong hệ thống)</label>
+                                                <label className="label-text text-blue-800 dark:text-blue-300">Chọn người thân (Đã có trong hệ thống)</label>
                                                 <SearchableCustomerSelect 
                                                     customers={customers.filter(c => c.id !== formData.id)} 
                                                     value={newRelCustomer?.fullName || ''}
@@ -403,7 +403,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                                 />
                                             </div>
                                             <div className="w-full md:w-48">
-                                                <label className="label-text text-blue-800">Mối quan hệ</label>
+                                                <label className="label-text text-blue-800 dark:text-blue-300">Mối quan hệ</label>
                                                 <select 
                                                     className="input-field" 
                                                     value={newRelType} 
@@ -422,25 +422,25 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                     </div>
 
                                     <div>
-                                        <h4 className="font-bold text-gray-800 mb-3 border-b pb-2">Sơ đồ Phả hệ Gia đình ({formData.relationships?.length || 0})</h4>
+                                        <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">Sơ đồ Phả hệ Gia đình ({formData.relationships?.length || 0})</h4>
                                         <div className="space-y-3">
                                             {formData.relationships && formData.relationships.length > 0 ? (
                                                 formData.relationships.map((rel, idx) => {
                                                     const relCustomer = customers.find(c => c.id === rel.relatedCustomerId);
                                                     return (
-                                                        <div key={idx} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition">
+                                                        <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm hover:shadow-md transition">
                                                             <div className="flex items-center gap-4">
                                                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${relCustomer?.gender === Gender.FEMALE ? 'bg-pink-400' : 'bg-blue-400'}`}>
                                                                     {relCustomer?.fullName.charAt(0) || '?'}
                                                                 </div>
                                                                 <div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <h5 className="font-bold text-gray-800">{relCustomer?.fullName || 'Khách hàng đã xóa'}</h5>
-                                                                        <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-gray-200">
+                                                                        <h5 className="font-bold text-gray-800 dark:text-gray-100">{relCustomer?.fullName || 'Khách hàng đã xóa'}</h5>
+                                                                        <span className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold border border-gray-200 dark:border-gray-600">
                                                                             {rel.relationship}
                                                                         </span>
                                                                     </div>
-                                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                                                         <i className="fas fa-birthday-cake mr-1"></i>
                                                                         {relCustomer ? `${new Date().getFullYear() - new Date(relCustomer.dob).getFullYear()} tuổi` : 'N/A'} 
                                                                         <span className="mx-1">•</span>
@@ -450,7 +450,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                                             </div>
                                                             <button 
                                                                 onClick={() => handleRemoveRelationship(idx)}
-                                                                className="w-8 h-8 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition flex items-center justify-center"
+                                                                className="w-8 h-8 rounded-full text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500 dark:hover:text-red-400 transition flex items-center justify-center"
                                                                 title="Gỡ liên kết"
                                                             >
                                                                 <i className="fas fa-unlink"></i>
@@ -459,9 +459,9 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                                     );
                                                 })
                                             ) : (
-                                                <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                                                    <i className="fas fa-users text-gray-300 text-3xl mb-2"></i>
-                                                    <p className="text-gray-500 text-sm">Chưa có thành viên nào trong gia đình.</p>
+                                                <div className="text-center py-8 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+                                                    <i className="fas fa-users text-gray-300 dark:text-gray-600 text-3xl mb-2"></i>
+                                                    <p className="text-gray-500 dark:text-gray-400 text-sm">Chưa có thành viên nào trong gia đình.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -473,7 +473,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                             {activeTab === 'documents' && (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-2">
-                                        <h3 className="font-bold text-gray-800">Hồ sơ số & Tài liệu</h3>
+                                        <h3 className="font-bold text-gray-800 dark:text-gray-100">Hồ sơ số & Tài liệu</h3>
                                         <label className={`bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-blue-700 transition cursor-pointer flex items-center ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                             {isUploading ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-cloud-upload-alt mr-2"></i>}
                                             {isUploading ? 'Đang tải...' : 'Tải lên'}
@@ -490,8 +490,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                     {formData.documents && formData.documents.length > 0 ? (
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                             {formData.documents.map((doc, idx) => (
-                                                <div key={idx} className="group relative bg-white border border-gray-200 rounded-xl p-3 hover:shadow-lg transition flex flex-col items-center">
-                                                    <div className="w-full h-32 bg-gray-50 rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
+                                                <div key={idx} className="group relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 hover:shadow-lg transition flex flex-col items-center">
+                                                    <div className="w-full h-32 bg-gray-50 dark:bg-gray-900 rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
                                                         {doc.type === 'image' ? (
                                                             <img src={doc.url} alt={doc.name} className="w-full h-full object-cover" />
                                                         ) : (
@@ -504,19 +504,19 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                                         </div>
                                                     </div>
                                                     <div className="text-center w-full">
-                                                        <p className="text-sm font-medium text-gray-800 truncate" title={doc.name}>{doc.name}</p>
-                                                        <p className="text-[10px] text-gray-500">{formatDateVN(doc.uploadDate.split('T')[0])}</p>
+                                                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title={doc.name}>{doc.name}</p>
+                                                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{formatDateVN(doc.uploadDate.split('T')[0])}</p>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center bg-gray-50">
-                                            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4 text-gray-400">
+                                        <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 flex flex-col items-center justify-center text-center bg-gray-50 dark:bg-gray-800/50">
+                                            <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4 text-gray-400 dark:text-gray-500">
                                                 <i className="fas fa-folder-open text-3xl"></i>
                                             </div>
-                                            <p className="text-gray-500 font-medium mb-1">Chưa có tài liệu nào.</p>
-                                            <p className="text-xs text-gray-400">Tải lên CCCD, Hợp đồng, Giấy khám sức khỏe...</p>
+                                            <p className="text-gray-500 dark:text-gray-400 font-medium mb-1">Chưa có tài liệu nào.</p>
+                                            <p className="text-xs text-gray-400 dark:text-gray-500">Tải lên CCCD, Hợp đồng, Giấy khám sức khỏe...</p>
                                         </div>
                                     )}
                                 </div>
@@ -536,62 +536,62 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                             )}
                         </div>
 
-                        <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-                            <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Hủy</button>
+                        <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
+                            <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>
                             <button onClick={handleSave} className="px-5 py-2 bg-pru-red text-white font-bold rounded-lg hover:bg-red-700 shadow-md">Lưu Khách Hàng</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* QUICK VIEW CONTRACT MODAL - Same as before... */}
+            {/* QUICK VIEW CONTRACT MODAL */}
             {viewContract && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in">
-                    <div className="bg-white rounded-xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="bg-gray-50 px-5 py-4 border-b flex justify-between items-start">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white dark:bg-pru-card rounded-xl max-w-lg w-full p-0 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-100 dark:border-gray-700">
+                        <div className="bg-gray-50 dark:bg-gray-800 px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-start">
                             <div>
-                                <h3 className="text-xl font-bold text-gray-800">{viewContract.mainProduct.productName}</h3>
+                                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{viewContract.mainProduct.productName}</h3>
                                 <p className="text-pru-red font-bold text-sm mt-1">#{viewContract.contractNumber}</p>
                             </div>
-                            <button onClick={() => setViewContract(null)} className="w-8 h-8 rounded-full bg-white text-gray-400 hover:text-gray-600 border flex items-center justify-center"><i className="fas fa-times"></i></button>
+                            <button onClick={() => setViewContract(null)} className="w-8 h-8 rounded-full bg-white dark:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 flex items-center justify-center"><i className="fas fa-times"></i></button>
                         </div>
                         <div className="p-5 overflow-y-auto space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                                    <p className="text-xs text-gray-500 uppercase font-bold">Trạng thái</p>
-                                    <p className="font-bold text-green-700">{viewContract.status}</p>
+                                <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-800">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Trạng thái</p>
+                                    <p className="font-bold text-green-700 dark:text-green-400">{viewContract.status}</p>
                                 </div>
-                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                    <p className="text-xs text-gray-500 uppercase font-bold">Tổng phí đóng</p>
-                                    <p className="font-bold text-blue-700">{viewContract.totalFee.toLocaleString()} đ</p>
+                                <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Tổng phí đóng</p>
+                                    <p className="font-bold text-blue-700 dark:text-blue-400">{viewContract.totalFee.toLocaleString()} đ</p>
                                 </div>
                             </div>
                             
                             <div>
-                                <h4 className="font-bold text-gray-700 text-sm border-b pb-1 mb-2">Thông tin chung</h4>
+                                <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm border-b border-gray-200 dark:border-gray-700 pb-1 mb-2">Thông tin chung</h4>
                                 <div className="grid grid-cols-2 gap-y-2 text-sm">
-                                    <p className="text-gray-500">Người được BH:</p>
-                                    <p className="font-medium text-right">{viewContract.mainProduct.insuredName}</p>
+                                    <p className="text-gray-500 dark:text-gray-400">Người được BH:</p>
+                                    <p className="font-medium text-right text-gray-900 dark:text-gray-100">{viewContract.mainProduct.insuredName}</p>
                                     
-                                    <p className="text-gray-500">Ngày hiệu lực:</p>
-                                    <p className="font-medium text-right">{formatDateVN(viewContract.effectiveDate)}</p>
+                                    <p className="text-gray-500 dark:text-gray-400">Ngày hiệu lực:</p>
+                                    <p className="font-medium text-right text-gray-900 dark:text-gray-100">{formatDateVN(viewContract.effectiveDate)}</p>
                                     
-                                    <p className="text-gray-500">Ngày đóng phí:</p>
-                                    <p className="font-medium text-right text-red-600">{formatDateVN(viewContract.nextPaymentDate)}</p>
+                                    <p className="text-gray-500 dark:text-gray-400">Ngày đóng phí:</p>
+                                    <p className="font-medium text-right text-red-600 dark:text-red-400">{formatDateVN(viewContract.nextPaymentDate)}</p>
 
-                                    <p className="text-gray-500">Định kỳ:</p>
-                                    <p className="font-medium text-right">{viewContract.paymentFrequency}</p>
+                                    <p className="text-gray-500 dark:text-gray-400">Định kỳ:</p>
+                                    <p className="font-medium text-right text-gray-900 dark:text-gray-100">{viewContract.paymentFrequency}</p>
                                 </div>
                             </div>
 
                             {viewContract.riders.length > 0 && (
                                 <div>
-                                    <h4 className="font-bold text-gray-700 text-sm border-b pb-1 mb-2">Sản phẩm bổ trợ ({viewContract.riders.length})</h4>
+                                    <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm border-b border-gray-200 dark:border-gray-700 pb-1 mb-2">Sản phẩm bổ trợ ({viewContract.riders.length})</h4>
                                     <ul className="space-y-2">
                                         {viewContract.riders.map((r, i) => (
-                                            <li key={i} className="text-sm bg-gray-50 p-2 rounded border border-gray-100">
-                                                <div className="font-medium text-gray-800">{r.productName}</div>
-                                                <div className="flex justify-between mt-1 text-xs text-gray-500">
+                                            <li key={i} className="text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
+                                                <div className="font-medium text-gray-800 dark:text-gray-200">{r.productName}</div>
+                                                <div className="flex justify-between mt-1 text-xs text-gray-500 dark:text-gray-400">
                                                     <span>BH: {r.sumAssured?.toLocaleString()} đ</span>
                                                     <span>Phí: {r.fee.toLocaleString()} đ</span>
                                                 </div>
@@ -601,8 +601,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
                                 </div>
                             )}
                         </div>
-                        <div className="p-4 bg-gray-50 border-t text-center">
-                            <button onClick={() => setViewContract(null)} className="w-full bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded-lg hover:bg-gray-100">Đóng</button>
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-center">
+                            <button onClick={() => setViewContract(null)} className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-bold py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">Đóng</button>
                         </div>
                     </div>
                 </div>
@@ -621,9 +621,11 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, onA
             />
 
             <style>{`
-                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; }
+                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; background-color: #fff; color: #111827; }
+                .dark .input-field { background-color: #111827; border-color: #374151; color: #f3f4f6; }
                 .input-field:focus { border-color: #ed1b2e; ring: 1px solid #ed1b2e; }
                 .label-text { display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem; }
+                .dark .label-text { color: #9ca3af; }
             `}</style>
         </div>
     );

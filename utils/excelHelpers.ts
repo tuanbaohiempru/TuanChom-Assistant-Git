@@ -183,7 +183,7 @@ export const processContractImport = async (file: File, existingContracts: Contr
                 sumAssured: Number(row[8]) || 0
             },
             riders: [], // Excel simple import doesn't support complex riders yet
-            beneficiary: ''
+            beneficiary: '',
         };
 
         valid.push(contract);

@@ -138,7 +138,7 @@ export interface Contract {
   paymentFrequency: PaymentFrequency; 
   nextPaymentDate: string;
   status: ContractStatus;
-  beneficiary?: string; // New Field: Người thụ hưởng
+  beneficiary?: string; 
 }
 
 export enum AppointmentType {
