@@ -1,5 +1,5 @@
 
-import { Customer, CustomerStatus, Product, ProductType, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel } from './types';
+import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -7,6 +7,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'PRU-Chủ Động Cuộc Sống',
     code: 'P-UL-01',
     type: ProductType.MAIN,
+    status: ProductStatus.ACTIVE,
     description: 'Giải pháp bảo vệ tài chính và tích lũy linh hoạt.',
     rulesAndTerms: 'Sản phẩm bảo hiểm liên kết chung. Độ tuổi tham gia từ 30 ngày tuổi đến 65 tuổi. Thời hạn hợp đồng đến 99 tuổi. Loại trừ bảo hiểm trong trường hợp tự tử trong vòng 24 tháng, hành vi phạm tội, hoặc bệnh có sẵn bị loại trừ cụ thể.',
     pdfUrl: ''
@@ -16,6 +17,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'PRU-Hành Trang Trưởng Thành',
     code: 'P-UL-02',
     type: ProductType.MAIN,
+    status: ProductStatus.ACTIVE,
     description: 'Quỹ giáo dục cho con yêu.',
     rulesAndTerms: 'Sản phẩm tích lũy giáo dục. Quyền lợi miễn đóng phí khi BMBH gặp rủi ro tử vong hoặc TTTBVV. Thời hạn đóng phí linh hoạt.',
     pdfUrl: ''
@@ -25,6 +27,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'Bảo hiểm Chăm sóc Sức khỏe Toàn diện',
     code: 'R-HC-01',
     type: ProductType.RIDER,
+    status: ProductStatus.ACTIVE,
     description: 'Chi trả chi phí y tế nội trú và ngoại trú.',
     rulesAndTerms: 'Thẻ sức khỏe có 4 chương trình: Cơ bản, Nâng cao, Toàn diện, Hoàn hảo. Loại trừ bệnh bẩm sinh (trừ khi được quy định), phẫu thuật thẩm mỹ, điều trị răng (trừ khi tai nạn). Thời gian chờ 30 ngày cho bệnh thông thường, 90 ngày cho bệnh đặc biệt.',
     pdfUrl: ''
@@ -34,6 +37,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'Bảo hiểm Bệnh lý nghiêm trọng',
     code: 'R-CI-01',
     type: ProductType.RIDER,
+    status: ProductStatus.ACTIVE,
     description: 'Bảo vệ trước 77 bệnh lý nghiêm trọng.',
     rulesAndTerms: 'Chi trả qua 3 giai đoạn bệnh. Giai đoạn đầu 25%, giai đoạn sau 100%. Thời gian chờ 90 ngày.',
     pdfUrl: ''
@@ -43,6 +47,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'Quy trình Giải quyết Quyền lợi Bảo hiểm (Claim)',
     code: 'OP-CLAIM',
     type: ProductType.OPERATION,
+    status: ProductStatus.ACTIVE,
     description: 'Hướng dẫn nộp hồ sơ và thời gian xử lý bồi thường.',
     rulesAndTerms: '1. Thời hạn nộp hồ sơ: Trong vòng 12 tháng kể từ ngày xảy ra sự kiện bảo hiểm. \n2. Các kênh nộp: Qua ứng dụng PRUOnline, Zalo OA Prudential Vietnam, hoặc trực tiếp tại văn phòng. \n3. Hồ sơ cần thiết: Giấy yêu cầu bồi thường, Giấy ra viện, Bảng kê chi phí, Hóa đơn tài chính, Các xét nghiệm y khoa. \n4. Thời gian xử lý: Tối đa 30 ngày kể từ khi nhận đủ hồ sơ hợp lệ.',
     pdfUrl: ''
@@ -52,6 +57,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     name: 'Thời gian cân nhắc 21 ngày',
     code: 'OP-FREELOOK',
     type: ProductType.OPERATION,
+    status: ProductStatus.ACTIVE,
     description: 'Quyền lợi dùng thử sản phẩm của khách hàng.',
     rulesAndTerms: 'Khách hàng có 21 ngày cân nhắc kể từ ngày nhận bộ hợp đồng. Trong thời gian này, khách hàng có thể hủy hợp đồng và nhận lại toàn bộ phí đã đóng (trừ chi phí khám sức khỏe nếu có). Sự kiện bảo hiểm xảy ra trong 21 ngày này vẫn được chi trả bình thường nếu hợp đồng đã được cấp.',
     pdfUrl: ''

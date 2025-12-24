@@ -1,4 +1,5 @@
-import { initializeApp } from "firebase/app";
+
+import * as firebaseApp from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -22,7 +23,7 @@ if (!isConfigured) {
 }
 
 // Khởi tạo Firebase
-const app = initializeApp(firebaseConfig);
+const app = (firebaseApp as any).initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 

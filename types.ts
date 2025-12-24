@@ -95,11 +95,17 @@ export enum ProductType {
   OPERATION = 'Nghiệp vụ bảo hiểm',
 }
 
+export enum ProductStatus {
+  ACTIVE = 'Đang bán',
+  INACTIVE = 'Ngưng bán'
+}
+
 export interface Product {
   id: string;
   name: string;
   code: string;
   type: ProductType;
+  status: ProductStatus; // Added status field
   description: string;
   rulesAndTerms: string; 
   pdfUrl?: string; 
@@ -110,7 +116,13 @@ export interface ContractProduct {
   productName: string; 
   insuredName: string; 
   fee: number; 
-  sumAssured: number; 
+  sumAssured: number;
+  // New field to store specific attributes like Plan (Nâng cao), Package (Loại 1)
+  attributes?: {
+    plan?: string;
+    package?: string;
+    [key: string]: any;
+  };
 }
 
 export enum ContractStatus {

@@ -1,5 +1,6 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { AppState, Customer, AgentProfile, Contract } from "../types";
+import { AppState, Customer, AgentProfile, Contract, ProductStatus } from "../types";
 
 // Helper to sanitize data for AI context (remove unnecessary UI fields if any)
 const prepareContext = (state: AppState) => {
@@ -36,6 +37,7 @@ const prepareContext = (state: AppState) => {
     products: state.products.map(p => ({
       name: p.name,
       type: p.type,
+      status: p.status, // Include Status here
       description: p.description,
       rules: p.rulesAndTerms,
     })),
@@ -63,7 +65,12 @@ export const chatWithData = async (
       DỮ LIỆU CỦA BẠN (JSON):
       ${contextData}
       
-      QUY TẮC TRÌNH BÀY (RẤT QUAN TRỌNG):
+      QUY TẮC BÁN HÀNG QUAN TRỌNG:
+      - **CHỈ ĐƯỢC ĐỀ XUẤT** các sản phẩm có trạng thái là "${ProductStatus.ACTIVE}". 
+      - Tuyệt đối **KHÔNG ĐỀ XUẤT** hoặc khuyên khách hàng mua các sản phẩm có trạng thái "${ProductStatus.INACTIVE}" (Ngưng bán). 
+      - Nếu khách hàng hỏi về một sản phẩm "Ngưng bán", hãy trả lời thông tin chi tiết về nó (để phục vụ khách hàng cũ) nhưng KHÔNG gợi ý mua mới.
+
+      QUY TẮC TRÌNH BÀY:
       1. **Cấu trúc**: Sử dụng Markdown.
          - Dùng tiêu đề cấp 3 (### ) cho các mục chính.
          - Dùng danh sách gạch đầu dòng (- ) cho các ý liệt kê.
@@ -76,11 +83,8 @@ export const chatWithData = async (
       
       NHIỆM VỤ:
       - Trả lời ngắn gọn, đúng trọng tâm.
-      - **Kiến thức Nghiệp vụ**: Sử dụng dữ liệu 'rules' (quy tắc) từ danh sách products. Đây là nguồn sự thật duy nhất.
-      - Nếu hỏi về Hợp đồng: 
-        - Dùng tiêu đề cho tên sản phẩm.
-        - Liệt kê các thông tin: Người được BH, Phí, STBH, Định kỳ đóng phí dưới dạng gạch đầu dòng.
-      - Nếu hỏi về Sản phẩm/Điều khoản: Trích dẫn các quy tắc loại trừ hoặc quyền lợi cụ thể.
+      - **Kiến thức Nghiệp vụ**: Sử dụng dữ liệu 'rules' từ products.
+      - Nếu hỏi về Hợp đồng: Liệt kê chi tiết.
       - Gợi ý chăm sóc: Đưa ra hành động cụ thể.
     `;
 
@@ -277,6 +281,7 @@ export const consultantChat = async (
         === NHIỆM VỤ NÂNG CAO (CONTEXT-AWARE) ===
         1. **Tra cứu Hợp đồng**: Nếu khách hỏi "Mình có cái gì rồi?", hãy dựa vào danh sách trên để trả lời chính xác tên sản phẩm, số phí, quyền lợi. Đừng bịa.
         2. **Gợi ý Bán thêm (Upsell/Cross-sell)**:
+           - Hãy tập trung đề xuất các sản phẩm phù hợp với nhu cầu còn thiếu của khách.
            - Nếu khách có Hợp đồng Chính (Nhân thọ) nhưng chưa có Thẻ sức khỏe -> Gợi ý thêm thẻ.
            - Dựa vào FAMILY CONTEXT: Nếu thấy Con cái (Child) chưa có hợp đồng -> Gợi ý quỹ học vấn (PRU-Hành Trang Trưởng Thành).
            - Nếu thấy Vợ/Chồng (Spouse) chưa có bảo hiểm -> Gợi ý bảo vệ trụ cột.

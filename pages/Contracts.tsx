@@ -1,10 +1,14 @@
 
-import React, { useState, useMemo } from 'react';
-import { Contract, Customer, Product, ContractStatus, PaymentFrequency, ProductType, ContractProduct } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Contract, Customer, Product, ContractStatus, PaymentFrequency, ProductType, ContractProduct, Gender } from '../types';
 import { ConfirmModal, SearchableCustomerSelect, CurrencyInput, formatDateVN } from '../components/Shared';
 import { generateClaimSupport } from '../services/geminiService';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processContractImport } from '../utils/excelHelpers';
+
+// Import Calculators
+import { calculateDauTuVungTien } from '../data/pruDauTuVungTien';
+import { calculateHanhTrangVuiKhoe, HTVKPlan, HTVKPackage } from '../data/pruHanhTrangVuiKhoe';
 
 interface ContractsPageProps {
     contracts: Contract[];
@@ -14,6 +18,10 @@ interface ContractsPageProps {
     onUpdate: (c: Contract) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
 }
+
+// Product Codes Mapping (Should match database)
+const CODE_DAU_TU = 'P-UL-01';
+const CODE_HANH_TRANG = 'R-HC-01';
 
 const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, products, onAdd, onUpdate, onDelete }) => {
     // --- UI STATES ---
@@ -71,7 +79,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     // --- METRICS CALCULATION ---
     const metrics = useMemo(() => {
         const totalActive = contracts.filter(c => c.status === ContractStatus.ACTIVE).length;
-        const totalFeeYearly = contracts.reduce((sum, c) => c.status === ContractStatus.ACTIVE ? sum + c.totalFee : sum, 0);
+        const totalFeeYearly = contracts.reduce((sum, c) => c.status === ContractStatus.ACTIVE ? sum + c.totalFee : sum, 0) || 0;
         const warningCount = contracts.filter(c => c.status === ContractStatus.LAPSED || c.status === ContractStatus.PENDING).length;
         const upcomingDue = contracts.filter(c => {
             if (c.status !== ContractStatus.ACTIVE) return false;
@@ -91,12 +99,40 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         return Math.max(1, current - start + 1);
     };
 
-    const calculateTotalFee = (data: Contract) => {
-        const mainFee = data.mainProduct.fee || 0;
-        const riderFees = (data.riders || []).reduce((sum, r) => sum + (r.fee || 0), 0);
-        return mainFee + riderFees;
-    };
+    const calculateAge = (dob: string): number => {
+        if (!dob) return 0;
+        const birthDate = new Date(dob);
+        if (isNaN(birthDate.getTime())) return 0;
+        const birthYear = birthDate.getFullYear();
+        const currentYear = new Date().getFullYear();
+        return Math.max(0, currentYear - birthYear);
+    }
 
+    // --- AUTO CALCULATION EFFECTS ---
+    // Recalculate Main Product Fee when Customer/Product/STBH changes
+    useEffect(() => {
+        if (!showModal) return;
+        const customer = customers.find(c => c.id === formData.customerId);
+        const product = products.find(p => p.id === formData.mainProduct.productId);
+
+        if (customer && product && product.code === CODE_DAU_TU && formData.mainProduct.sumAssured > 0) {
+            const age = calculateAge(customer.dob);
+            const fee = calculateDauTuVungTien(age, customer.gender, formData.mainProduct.sumAssured);
+            
+            // Only update if fee is different to avoid loop
+            if (fee !== formData.mainProduct.fee) {
+                setFormData(prev => ({
+                    ...prev,
+                    mainProduct: { ...prev.mainProduct, fee: fee },
+                    totalFee: fee + prev.riders.reduce((acc, r) => acc + (r.fee || 0), 0)
+                }));
+            }
+        }
+    }, [formData.customerId, formData.mainProduct.productId, formData.mainProduct.sumAssured, showModal]);
+
+    // Recalculate Riders Fee when dependent fields change
+    // This is complex so we handle it inside the Rider Change handler for performance
+    
     // --- CLAIM LOGIC ---
     const handleOpenClaim = async (contract: Contract) => {
         const customer = customers.find(c => c.id === contract.customerId) || null;
@@ -119,37 +155,28 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
 
     const getSuggestedDocuments = (contract: Contract): string[] => {
         const docs = new Set<string>();
-        // Always required
         docs.add("Phiếu yêu cầu giải quyết quyền lợi (Form)");
         docs.add("CCCD/CMND người nhận quyền lợi");
 
-        // Check products
         const allProducts = [contract.mainProduct.productName, ...contract.riders.map(r => r.productName)].join(' ').toLowerCase();
 
         if (allProducts.includes('sức khỏe') || allProducts.includes('nội trú') || allProducts.includes('y tế')) {
             docs.add("Giấy ra viện (Bản chính/Sao y)");
             docs.add("Bảng kê chi tiết viện phí");
             docs.add("Hóa đơn tài chính (Hóa đơn đỏ/điện tử)");
-            docs.add("Giấy chứng nhận phẫu thuật (nếu có)");
         }
-
         if (allProducts.includes('tai nạn')) {
             docs.add("Biên bản tai nạn / Bản tường trình tai nạn");
             docs.add("Phim chụp X-Quang/CT và kết quả đọc phim");
-            docs.add("Giấy phép lái xe (nếu tự lái xe)");
         }
-
         if (allProducts.includes('bệnh hiểm nghèo') || allProducts.includes('bệnh lý')) {
             docs.add("Kết quả giải phẫu bệnh (Sinh thiết)");
             docs.add("Các xét nghiệm y khoa chẩn đoán bệnh");
         }
-
         if (allProducts.includes('tử vong') || allProducts.includes('nhân thọ')) {
             docs.add("Trích lục khai tử");
             docs.add("Giấy xác nhận nguyên nhân tử vong");
-            docs.add("Hồ sơ bệnh án (nếu tử vong do bệnh)");
         }
-
         return Array.from(docs);
     };
 
@@ -162,7 +189,10 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     };
     const handleOpenEdit = (c: Contract) => { setFormData(c); setIsEditing(true); setShowModal(true); };
     const handleSave = async () => { 
-        const finalData = { ...formData, totalFee: calculateTotalFee(formData) }; 
+        // Force Total Fee recalc before save
+        const total = formData.mainProduct.fee + formData.riders.reduce((acc, r) => acc + (r.fee || 0), 0);
+        const finalData = { ...formData, totalFee: total }; 
+        
         if (!finalData.contractNumber || !finalData.customerId || !finalData.mainProduct.productId) return alert("Thiếu thông tin bắt buộc!");
         isEditing ? await onUpdate(finalData) : await onAdd(finalData); 
         setShowModal(false); 
@@ -445,9 +475,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                         <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded font-bold">BỔ TRỢ</span>
                                                         <div className="font-medium text-gray-800 dark:text-gray-200 mt-1">{r.productName}</div>
                                                         <div className="text-xs text-gray-500 dark:text-gray-400">NĐBH: {r.insuredName}</div>
+                                                        {r.attributes?.plan && <div className="text-[10px] text-green-600 bg-green-50 px-1 rounded inline-block mt-1">{r.attributes.plan}</div>}
                                                     </div>
                                                     <div className="text-right">
                                                         <div className="font-bold text-gray-700 dark:text-gray-300">{r.sumAssured?.toLocaleString()} đ</div>
+                                                        {r.attributes?.plan && <div className="text-xs text-gray-400">Phí: {r.fee.toLocaleString()}</div>}
                                                     </div>
                                                 </div>
                                             ))}
@@ -470,7 +502,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                             </div>
                                             <div>
                                                 <span className="block text-gray-400 text-xs">Tổng phí năm</span>
-                                                <div className="font-medium">{viewContract.totalFee.toLocaleString()} đ</div>
+                                                <div className="font-medium text-pru-red dark:text-red-400 font-bold">{viewContract.totalFee.toLocaleString()} đ</div>
                                             </div>
                                         </div>
                                     </div>
@@ -615,28 +647,96 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                     <h4 className="font-bold text-orange-800 dark:text-orange-300 text-sm uppercase">Sản phẩm bổ trợ</h4>
                                     <button onClick={() => setFormData({...formData, riders: [...formData.riders, {productId: '', productName: '', insuredName: '', fee: 0, sumAssured: 0}]})} className="text-xs bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 px-3 py-1 rounded font-bold hover:bg-orange-100 dark:hover:bg-orange-900/30">+ Thêm</button>
                                 </div>
-                                {formData.riders.map((rider, idx) => (
-                                    <div key={idx} className="relative bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800/50 mb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <button onClick={() => {const r = [...formData.riders]; r.splice(idx, 1); setFormData({...formData, riders: r})}} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><i className="fas fa-times-circle"></i></button>
-                                        <div className="md:col-span-2">
-                                            <select className="input-field text-sm" value={rider.productId} onChange={(e) => {
-                                                const prod = riderProducts.find(p => p.id === e.target.value);
-                                                const newRiders = [...formData.riders];
-                                                newRiders[idx] = {...rider, productId: e.target.value, productName: prod?.name || ''};
-                                                setFormData({...formData, riders: newRiders});
-                                            }}>
-                                                <option value="">-- Chọn SPBT --</option>
-                                                {riderProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
+                                {formData.riders.map((rider, idx) => {
+                                    // Check if this rider is "Hành Trang Vui Khỏe"
+                                    const riderProd = products.find(p => p.id === rider.productId);
+                                    const isHanhTrang = riderProd?.code === CODE_HANH_TRANG;
+
+                                    return (
+                                        <div key={idx} className="relative bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800/50 mb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <button onClick={() => {const r = [...formData.riders]; r.splice(idx, 1); setFormData({...formData, riders: r})}} className="absolute top-2 right-2 text-gray-300 hover:text-red-500"><i className="fas fa-times-circle"></i></button>
+                                            <div className="md:col-span-2">
+                                                <select className="input-field text-sm" value={rider.productId} onChange={(e) => {
+                                                    const prod = riderProducts.find(p => p.id === e.target.value);
+                                                    const newRiders = [...formData.riders];
+                                                    // Initialize attributes if Hanh Trang
+                                                    let attributes = {};
+                                                    if (prod?.code === CODE_HANH_TRANG) {
+                                                        attributes = { plan: HTVKPlan.NANG_CAO, package: HTVKPackage.STANDARD };
+                                                    }
+                                                    
+                                                    newRiders[idx] = {
+                                                        ...rider, 
+                                                        productId: e.target.value, 
+                                                        productName: prod?.name || '',
+                                                        attributes
+                                                    };
+                                                    setFormData({...formData, riders: newRiders});
+                                                }}>
+                                                    <option value="">-- Chọn SPBT --</option>
+                                                    {riderProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <SearchableCustomerSelect customers={customers} value={rider.insuredName || ''} onChange={c => {
+                                                 const newRiders = [...formData.riders];
+                                                 newRiders[idx] = {...rider, insuredName: c.fullName};
+                                                 
+                                                 // Auto Calc Rider Fee on Customer Change
+                                                 if (isHanhTrang) {
+                                                     const age = calculateAge(c.dob);
+                                                     const plan = newRiders[idx].attributes?.plan as HTVKPlan || HTVKPlan.NANG_CAO;
+                                                     const pkg = newRiders[idx].attributes?.package as HTVKPackage || HTVKPackage.STANDARD;
+                                                     const fee = calculateHanhTrangVuiKhoe(age, c.gender, plan, pkg);
+                                                     newRiders[idx].fee = fee;
+                                                 }
+
+                                                 setFormData({...formData, riders: newRiders});
+                                            }} label="Người được BH" className="text-sm" />
+                                            
+                                            {isHanhTrang ? (
+                                                <>
+                                                    <div>
+                                                        <label className="text-[10px] uppercase font-bold text-gray-400">Chương trình</label>
+                                                        <select 
+                                                            className="input-field text-sm"
+                                                            value={rider.attributes?.plan || HTVKPlan.NANG_CAO}
+                                                            onChange={(e) => {
+                                                                const newRiders = [...formData.riders];
+                                                                const plan = e.target.value as HTVKPlan;
+                                                                newRiders[idx].attributes = { ...newRiders[idx].attributes, plan };
+                                                                
+                                                                // Recalculate
+                                                                const customer = customers.find(c => c.fullName === rider.insuredName);
+                                                                if (customer) {
+                                                                    const age = calculateAge(customer.dob);
+                                                                    const pkg = newRiders[idx].attributes?.package as HTVKPackage || HTVKPackage.STANDARD;
+                                                                    newRiders[idx].fee = calculateHanhTrangVuiKhoe(age, customer.gender, plan, pkg);
+                                                                }
+                                                                setFormData({...formData, riders: newRiders});
+                                                            }}
+                                                        >
+                                                            {Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] uppercase font-bold text-gray-400">Phí (Tự động)</label>
+                                                        <div className="input-field text-sm font-bold bg-gray-100 text-gray-700">{rider.fee.toLocaleString()} đ</div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div><label className="text-[10px] uppercase font-bold text-gray-400">Phí</label><CurrencyInput className="input-field text-sm" value={rider.fee} onChange={v => {const r = [...formData.riders]; r[idx].fee = v; setFormData({...formData, riders: r})}} /></div>
+                                            )}
                                         </div>
-                                        <SearchableCustomerSelect customers={customers} value={rider.insuredName || ''} onChange={c => {
-                                             const newRiders = [...formData.riders];
-                                             newRiders[idx] = {...rider, insuredName: c.fullName};
-                                             setFormData({...formData, riders: newRiders});
-                                        }} label="Người được BH" className="text-sm" />
-                                        <div><label className="text-[10px] uppercase font-bold text-gray-400">Phí</label><CurrencyInput className="input-field text-sm" value={rider.fee} onChange={v => {const r = [...formData.riders]; r[idx].fee = v; setFormData({...formData, riders: r})}} /></div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* TOTAL SUMMARY */}
+                            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-xl flex justify-between items-center">
+                                <span className="font-bold text-gray-700 dark:text-gray-200">Tổng phí dự kiến:</span>
+                                <span className="text-xl font-bold text-pru-red dark:text-red-400">
+                                    {(formData.mainProduct.fee + formData.riders.reduce((acc, r) => acc + (r.fee || 0), 0)).toLocaleString()} đ
+                                </span>
                             </div>
                         </div>
 
