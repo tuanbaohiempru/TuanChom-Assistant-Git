@@ -100,15 +100,51 @@ export enum ProductStatus {
   INACTIVE = 'Ngưng bán'
 }
 
+// --- UPDATED CALCULATION TYPES ---
+export enum ProductCalculationType {
+  UL_UNIT_LINK = 'UL_UNIT_LINK', // Tỷ lệ * STBH / 1000 (Đầu tư vững tiến cũ)
+  HEALTH_CARE = 'HEALTH_CARE', // Phí cố định theo Tuổi & Gói (Hành trang vui khỏe)
+  WAIVER_CI = 'WAIVER_CI', // Tỷ lệ * STBH / 100 (Hỗ trợ đóng phí)
+  FIXED = 'FIXED', // Nhập tay hoàn toàn
+  RATE_PER_1000_AGE_GENDER = 'RATE_PER_1000_AGE_GENDER', // (STBH / 1000) * Rate[Age][Gender] (Cuộc sống bình an)
+  RATE_PER_1000_TERM = 'RATE_PER_1000_TERM', // (STBH / 1000) * Rate[Age][Gender][Term] (Tương lai tươi sáng, Bệnh lý...)
+  RATE_PER_1000_OCCUPATION = 'RATE_PER_1000_OCCUPATION', // (STBH / 1000) * Rate[OccupationGroup] (Tai nạn)
+}
+
+// --- NEW: DYNAMIC PRODUCT ENGINE TYPES ---
+export enum FormulaType {
+  RATE_BASED = 'RATE_BASED', // Công thức: (STBH / 1000) * Tỷ lệ (Tra bảng)
+  FIXED_FEE = 'FIXED_FEE',   // Công thức: Tra bảng lấy thẳng giá trị (VD: Thẻ sức khỏe)
+}
+
+export interface ProductCalculationConfig {
+  formulaType: FormulaType;
+  // Mapping keys: Tên biến trong hệ thống -> Tên cột trong Excel
+  lookupKeys: {
+      age?: string;        // Cột Tuổi
+      gender?: string;     // Cột Giới tính
+      term?: string;       // Cột Thời hạn đóng phí
+      occupation?: string; // Cột Nhóm nghề
+      plan?: string;       // Cột Chương trình (Plan)
+      package?: string;    // Cột Gói (Package - VD: Có/Không miễn thường)
+  };
+  resultKey: string;       // Cột kết quả (Rate hoặc Fee)
+}
+
 export interface Product {
   id: string;
   name: string;
   code: string;
   type: ProductType;
-  status: ProductStatus; // Added status field
+  status: ProductStatus; 
+  calculationType?: ProductCalculationType; // Legacy support
   description: string;
   rulesAndTerms: string; 
-  pdfUrl?: string; 
+  pdfUrl?: string;
+  
+  // --- New Dynamic Fields ---
+  rateTable?: Record<string, any>[]; // Dữ liệu thô từ Excel
+  calculationConfig?: ProductCalculationConfig; // Cấu hình ánh xạ
 }
 
 export interface ContractProduct {
@@ -117,10 +153,11 @@ export interface ContractProduct {
   insuredName: string; 
   fee: number; 
   sumAssured: number;
-  // New field to store specific attributes like Plan (Nâng cao), Package (Loại 1)
   attributes?: {
     plan?: string;
     package?: string;
+    paymentTerm?: number; // Thời hạn đóng phí (Năm)
+    occupationGroup?: number; // Nhóm nghề (1-4)
     [key: string]: any;
   };
 }
@@ -151,6 +188,19 @@ export interface Contract {
   nextPaymentDate: string;
   status: ContractStatus;
   beneficiary?: string; 
+}
+
+// --- NEW: ILLUSTRATION INTERFACE ---
+export interface Illustration {
+  id: string;
+  customerId: string;
+  customerName: string; // Snapshot
+  createdAt: string;
+  mainProduct: ContractProduct;
+  riders: ContractProduct[];
+  totalFee: number;
+  reasoning: string; // AI reasoning
+  status: 'DRAFT' | 'ACCEPTED' | 'REJECTED' | 'CONVERTED';
 }
 
 export enum AppointmentType {
@@ -185,8 +235,6 @@ export interface Appointment {
   type: AppointmentType;
   status: AppointmentStatus;
   note: string;
-  
-  // New Outcome Tracking Fields
   outcome?: AppointmentResult;
   outcomeNote?: string;
 }
@@ -224,5 +272,6 @@ export interface AppState {
   contracts: Contract[];
   appointments: Appointment[];
   agentProfile: AgentProfile | null;
-  messageTemplates: MessageTemplate[]; // Added templates to state
+  messageTemplates: MessageTemplate[]; 
+  illustrations: Illustration[]; // Added
 }

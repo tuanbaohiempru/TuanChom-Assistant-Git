@@ -1,25 +1,60 @@
 
-import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel } from './types';
+import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, ProductCalculationType } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'p1',
-    name: 'PRU-Chủ Động Cuộc Sống',
-    code: 'P-UL-01',
+    name: 'PRU-Cuộc Sống Bình An',
+    code: 'P-CSBA',
     type: ProductType.MAIN,
     status: ProductStatus.ACTIVE,
-    description: 'Giải pháp bảo vệ tài chính và tích lũy linh hoạt.',
-    rulesAndTerms: 'Sản phẩm bảo hiểm liên kết chung. Độ tuổi tham gia từ 30 ngày tuổi đến 65 tuổi. Thời hạn hợp đồng đến 99 tuổi. Loại trừ bảo hiểm trong trường hợp tự tử trong vòng 24 tháng, hành vi phạm tội, hoặc bệnh có sẵn bị loại trừ cụ thể.',
+    calculationType: ProductCalculationType.RATE_PER_1000_AGE_GENDER,
+    description: 'Bảo vệ tài chính trọn đời trước rủi ro tử vong và thương tật.',
+    rulesAndTerms: 'Độ tuổi tham gia từ 15 đến 60 tuổi. Tỷ lệ phí phụ thuộc vào tuổi và giới tính.',
     pdfUrl: ''
   },
   {
     id: 'p2',
-    name: 'PRU-Hành Trang Trưởng Thành',
-    code: 'P-UL-02',
+    name: 'PRU-Tương Lai Tươi Sáng',
+    code: 'P-TLTS',
     type: ProductType.MAIN,
     status: ProductStatus.ACTIVE,
-    description: 'Quỹ giáo dục cho con yêu.',
-    rulesAndTerms: 'Sản phẩm tích lũy giáo dục. Quyền lợi miễn đóng phí khi BMBH gặp rủi ro tử vong hoặc TTTBVV. Thời hạn đóng phí linh hoạt.',
+    calculationType: ProductCalculationType.RATE_PER_1000_TERM,
+    description: 'Giải pháp tích lũy giáo dục đảm bảo cho tương lai con trẻ.',
+    rulesAndTerms: 'Thời hạn đóng phí linh hoạt từ 8 đến 18 năm. Tỷ lệ phí thay đổi theo thời hạn đóng phí.',
+    pdfUrl: ''
+  },
+  {
+    id: 'p3',
+    name: 'PRU-Đầu Tư Vững Tiến',
+    code: 'P-DTVT',
+    type: ProductType.MAIN,
+    status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.RATE_PER_1000_AGE_GENDER,
+    description: 'Kết hợp bảo vệ và đầu tư an toàn với lãi suất cam kết.',
+    rulesAndTerms: 'Phí bảo hiểm tính theo tỷ lệ phần nghìn dựa trên tuổi và giới tính.',
+    pdfUrl: ''
+  },
+  {
+    id: 'p4',
+    name: 'PRU-Bảo Vệ Tối Đa',
+    code: 'P-BVTD',
+    type: ProductType.MAIN,
+    status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.RATE_PER_1000_AGE_GENDER,
+    description: 'Giải pháp bảo vệ toàn diện với quyền lợi bảo vệ cao trước rủi ro.',
+    rulesAndTerms: 'Phí bảo hiểm tính theo tỷ lệ phần nghìn dựa trên tuổi và giới tính.',
+    pdfUrl: ''
+  },
+  {
+    id: 'p5',
+    name: 'PRU-Đầu Tư Linh Hoạt',
+    code: 'P-DTLH',
+    type: ProductType.MAIN,
+    status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.RATE_PER_1000_AGE_GENDER,
+    description: 'Giải pháp đầu tư linh hoạt, nắm bắt cơ hội tăng trưởng tài sản.',
+    rulesAndTerms: 'Phí bảo hiểm tính theo tỷ lệ phần nghìn dựa trên tuổi và giới tính.',
     pdfUrl: ''
   },
   {
@@ -28,18 +63,31 @@ export const INITIAL_PRODUCTS: Product[] = [
     code: 'R-HC-01',
     type: ProductType.RIDER,
     status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.HEALTH_CARE,
     description: 'Chi trả chi phí y tế nội trú và ngoại trú.',
-    rulesAndTerms: 'Thẻ sức khỏe có 4 chương trình: Cơ bản, Nâng cao, Toàn diện, Hoàn hảo. Loại trừ bệnh bẩm sinh (trừ khi được quy định), phẫu thuật thẩm mỹ, điều trị răng (trừ khi tai nạn). Thời gian chờ 30 ngày cho bệnh thông thường, 90 ngày cho bệnh đặc biệt.',
+    rulesAndTerms: 'Thẻ sức khỏe có 4 chương trình: Cơ bản, Nâng cao, Toàn diện, Hoàn hảo.',
     pdfUrl: ''
   },
   {
     id: 'r2',
-    name: 'Bảo hiểm Bệnh lý nghiêm trọng',
+    name: 'BH Bệnh lý Nghiêm trọng',
     code: 'R-CI-01',
     type: ProductType.RIDER,
     status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.RATE_PER_1000_TERM,
     description: 'Bảo vệ trước 77 bệnh lý nghiêm trọng.',
-    rulesAndTerms: 'Chi trả qua 3 giai đoạn bệnh. Giai đoạn đầu 25%, giai đoạn sau 100%. Thời gian chờ 90 ngày.',
+    rulesAndTerms: 'Phí bảo hiểm tính theo tỷ lệ phần nghìn dựa trên tuổi và thời hạn đóng phí (5-30 năm).',
+    pdfUrl: ''
+  },
+  {
+    id: 'r3',
+    name: 'Bảo hiểm Tai nạn',
+    code: 'R-ACC',
+    type: ProductType.RIDER,
+    status: ProductStatus.ACTIVE,
+    calculationType: ProductCalculationType.RATE_PER_1000_OCCUPATION,
+    description: 'Bảo vệ trước rủi ro tai nạn 24/7.',
+    rulesAndTerms: 'Tỷ lệ phí phụ thuộc vào nhóm nghề nghiệp (1-4). Nhóm 1: Văn phòng, Nhóm 4: Lao động nặng/nguy hiểm.',
     pdfUrl: ''
   },
   {
@@ -49,7 +97,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     type: ProductType.OPERATION,
     status: ProductStatus.ACTIVE,
     description: 'Hướng dẫn nộp hồ sơ và thời gian xử lý bồi thường.',
-    rulesAndTerms: '1. Thời hạn nộp hồ sơ: Trong vòng 12 tháng kể từ ngày xảy ra sự kiện bảo hiểm. \n2. Các kênh nộp: Qua ứng dụng PRUOnline, Zalo OA Prudential Vietnam, hoặc trực tiếp tại văn phòng. \n3. Hồ sơ cần thiết: Giấy yêu cầu bồi thường, Giấy ra viện, Bảng kê chi phí, Hóa đơn tài chính, Các xét nghiệm y khoa. \n4. Thời gian xử lý: Tối đa 30 ngày kể từ khi nhận đủ hồ sơ hợp lệ.',
+    rulesAndTerms: '1. Thời hạn nộp hồ sơ: Trong vòng 12 tháng...',
     pdfUrl: ''
   },
   {
@@ -59,7 +107,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     type: ProductType.OPERATION,
     status: ProductStatus.ACTIVE,
     description: 'Quyền lợi dùng thử sản phẩm của khách hàng.',
-    rulesAndTerms: 'Khách hàng có 21 ngày cân nhắc kể từ ngày nhận bộ hợp đồng. Trong thời gian này, khách hàng có thể hủy hợp đồng và nhận lại toàn bộ phí đã đóng (trừ chi phí khám sức khỏe nếu có). Sự kiện bảo hiểm xảy ra trong 21 ngày này vẫn được chi trả bình thường nếu hợp đồng đã được cấp.',
+    rulesAndTerms: 'Khách hàng có 21 ngày cân nhắc kể từ ngày nhận bộ hợp đồng.',
     pdfUrl: ''
   }
 ];
@@ -134,7 +182,7 @@ export const INITIAL_CONTRACTS: Contract[] = [
     paymentFrequency: PaymentFrequency.ANNUAL,
     mainProduct: {
       productId: 'p1',
-      productName: 'PRU-Chủ Động Cuộc Sống',
+      productName: 'PRU-Cuộc Sống Bình An',
       insuredName: 'Nguyễn Thị Thanh',
       fee: 20000000,
       sumAssured: 1000000000
@@ -145,17 +193,11 @@ export const INITIAL_CONTRACTS: Contract[] = [
         productName: 'Bảo hiểm Chăm sóc Sức khỏe Toàn diện',
         insuredName: 'Nguyễn Thị Thanh',
         fee: 5000000,
-        sumAssured: 500000000
-      },
-       {
-        productId: 'r2',
-        productName: 'Bảo hiểm Bệnh lý nghiêm trọng',
-        insuredName: 'Nguyễn Thị Thanh',
-        fee: 3000000,
-        sumAssured: 300000000
+        sumAssured: 500000000,
+        attributes: { plan: 'Toàn diện', package: 'Chuẩn' }
       }
     ],
-    totalFee: 28000000
+    totalFee: 25000000
   }
 ];
 

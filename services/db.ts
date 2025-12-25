@@ -19,8 +19,9 @@ const COLLECTIONS = {
     CONTRACTS: 'contracts',
     PRODUCTS: 'products',
     APPOINTMENTS: 'appointments',
-    SETTINGS: 'settings', // Used for Agent Profile
-    MESSAGE_TEMPLATES: 'message_templates' // New Collection
+    SETTINGS: 'settings', 
+    MESSAGE_TEMPLATES: 'message_templates',
+    ILLUSTRATIONS: 'illustrations' // New
 };
 
 // --- GENERIC FUNCTIONS ---
@@ -30,13 +31,12 @@ const COLLECTIONS = {
  */
 export const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
     // Mặc định sắp xếp theo ngày tạo hoặc ID nếu không có field created_at
-    // Ở đây ta lấy raw query để đơn giản hóa
     const q = query(collection(db, collectionName));
     
     return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
         const data = snapshot.docs.map(doc => ({
             ...doc.data(),
-            id: doc.id // Ghi đè ID ảo bằng ID thật của Firestore
+            id: doc.id 
         }));
         callback(data);
     }, (error) => {
@@ -46,11 +46,10 @@ export const subscribeToCollection = (collectionName: string, callback: (data: a
 
 /**
  * Thêm mới dữ liệu
- * Lưu ý: Chúng ta xóa field 'id' nếu có trong data object vì Firestore sẽ tự sinh ID
  */
 export const addData = async (collectionName: string, data: any) => {
     try {
-        const { id, ...cleanData } = data; // Loại bỏ ID giả (nếu có)
+        const { id, ...cleanData } = data; 
         await addDoc(collection(db, collectionName), cleanData);
     } catch (e) {
         console.error("Error adding document: ", e);
@@ -64,7 +63,7 @@ export const addData = async (collectionName: string, data: any) => {
 export const updateData = async (collectionName: string, id: string, data: any) => {
     try {
         const docRef = doc(db, collectionName, id);
-        const { id: dataId, ...cleanData } = data; // Không update ID
+        const { id: dataId, ...cleanData } = data; 
         await updateDoc(docRef, cleanData);
     } catch (e) {
         console.error("Error updating document: ", e);

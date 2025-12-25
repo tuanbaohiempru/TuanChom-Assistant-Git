@@ -12,8 +12,9 @@ import MessageTemplatesPage from './pages/MessageTemplates';
 import SettingsPage from './pages/Settings';
 import AdvisoryPage from './pages/Advisory';
 import MarketingPage from './pages/Marketing';
+import ProductAdvisoryPage from './pages/ProductAdvisory'; // New
 
-import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile } from './types';
+import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile, Illustration, ContractStatus, PaymentFrequency } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
 
 const App: React.FC = () => {
@@ -23,7 +24,8 @@ const App: React.FC = () => {
         products: [],
         appointments: [],
         agentProfile: null,
-        messageTemplates: []
+        messageTemplates: [],
+        illustrations: []
     });
 
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -50,6 +52,7 @@ const App: React.FC = () => {
             subscribeToCollection(COLLECTIONS.CONTRACTS, (data) => setState(prev => ({ ...prev, contracts: data }))),
             subscribeToCollection(COLLECTIONS.APPOINTMENTS, (data) => setState(prev => ({ ...prev, appointments: data }))),
             subscribeToCollection(COLLECTIONS.MESSAGE_TEMPLATES, (data) => setState(prev => ({ ...prev, messageTemplates: data }))),
+            subscribeToCollection(COLLECTIONS.ILLUSTRATIONS, (data) => setState(prev => ({ ...prev, illustrations: data }))), // New
             subscribeToCollection(COLLECTIONS.SETTINGS, (data) => {
                 if (data && data.length > 0) setState(prev => ({ ...prev, agentProfile: data[0] as AgentProfile }));
             })
@@ -78,6 +81,29 @@ const App: React.FC = () => {
     const updateTemplate = async (t: MessageTemplate) => await updateData(COLLECTIONS.MESSAGE_TEMPLATES, t.id, t);
     const deleteTemplate = async (id: string) => await deleteData(COLLECTIONS.MESSAGE_TEMPLATES, id);
 
+    const saveIllustration = async (ill: Illustration) => await addData(COLLECTIONS.ILLUSTRATIONS, ill);
+    const deleteIllustration = async (id: string) => await deleteData(COLLECTIONS.ILLUSTRATIONS, id);
+    
+    // Convert Illustration to Contract
+    const convertIllustration = async (ill: Illustration, customerId: string) => {
+        const newContract: Contract = {
+            id: '',
+            contractNumber: `NEW-${Date.now().toString().slice(-6)}`,
+            customerId: customerId,
+            effectiveDate: new Date().toISOString().split('T')[0],
+            nextPaymentDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+            status: ContractStatus.PENDING,
+            paymentFrequency: PaymentFrequency.ANNUAL,
+            totalFee: ill.totalFee,
+            mainProduct: ill.mainProduct,
+            riders: ill.riders,
+            beneficiary: ''
+        };
+        
+        await addContract(newContract);
+        await updateData(COLLECTIONS.ILLUSTRATIONS, ill.id, { ...ill, status: 'CONVERTED' });
+    };
+
     const saveProfile = async (profile: AgentProfile) => {
         if (state.agentProfile && state.agentProfile.id) {
             await updateData(COLLECTIONS.SETTINGS, state.agentProfile.id, profile);
@@ -91,7 +117,25 @@ const App: React.FC = () => {
             <Layout>
                 <Routes>
                     <Route path="/" element={<Dashboard state={state} onUpdateContract={updateContract} />} />
-                    <Route path="/customers" element={<CustomersPage customers={state.customers} contracts={state.contracts} onAdd={addCustomer} onUpdate={updateCustomer} onDelete={deleteCustomer} />} />
+                    <Route path="/customers" element={
+                        <CustomersPage 
+                            customers={state.customers} 
+                            contracts={state.contracts} 
+                            illustrations={state.illustrations}
+                            onAdd={addCustomer} 
+                            onUpdate={updateCustomer} 
+                            onDelete={deleteCustomer} 
+                            onConvertIllustration={convertIllustration}
+                            onDeleteIllustration={deleteIllustration}
+                        />
+                    } />
+                    <Route path="/product-advisory" element={
+                        <ProductAdvisoryPage 
+                            customers={state.customers} 
+                            products={state.products}
+                            onSaveIllustration={saveIllustration}
+                        />
+                    } />
                     <Route path="/contracts" element={<ContractsPage contracts={state.contracts} customers={state.customers} products={state.products} onAdd={addContract} onUpdate={updateContract} onDelete={deleteContract} />} />
                     <Route path="/products" element={<ProductsPage products={state.products} onAdd={addProduct} onUpdate={updateProduct} onDelete={deleteProduct} />} />
                     <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />

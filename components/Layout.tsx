@@ -13,6 +13,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: 'fa-chart-line' },
     { path: '/customers', label: 'Khách hàng', icon: 'fa-users' },
+    { path: '/product-advisory', label: 'Tư vấn (AI)', icon: 'fa-magic' }, // New Item
     { path: '/contracts', label: 'Hợp đồng', icon: 'fa-file-contract' },
     { path: '/products', label: 'Sản phẩm', icon: 'fa-book-open' },
     { path: '/appointments', label: 'Lịch hẹn', icon: 'fa-calendar-check' },
