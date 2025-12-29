@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Hàm kiểm tra người dùng đã đăng nhập chưa
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Áp dụng cho tất cả các collections (customers, contracts, products, etc.)
+    // Chỉ cho phép Đọc và Ghi nếu đã đăng nhập
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

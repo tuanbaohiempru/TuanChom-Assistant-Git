@@ -5,6 +5,7 @@ import { Customer, AgentProfile, Contract, FinancialGoal, PlanResult, FinancialP
 import { CurrencyInput, cleanMarkdownForClipboard, formatDateVN } from '../components/Shared';
 import { calculateRetirement, calculateProtection, calculateEducation } from '../services/financialCalculator';
 import { consultantChat, getObjectionSuggestions, generateFinancialAdvice } from '../services/geminiService';
+import DOMPurify from 'dompurify';
 
 interface AdvisoryPageProps {
     customers: Customer[];
@@ -227,7 +228,12 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
         setCopiedIndex(index);
         setTimeout(() => setCopiedIndex(null), 2000);
     };
-    const formatMessageText = (text: string) => text.replace(/\n/g, '<br />').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    
+    // Sanitize output for Advisory Chat
+    const formatMessageText = (text: string) => {
+        const html = text.replace(/\n/g, '<br />').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        return DOMPurify.sanitize(html, { ADD_ATTR: ['class', 'style', 'target'] });
+    };
 
     if (!customer) return <div className="p-8 text-center">Khách hàng không tồn tại.</div>;
 

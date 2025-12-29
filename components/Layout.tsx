@@ -1,13 +1,16 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { User } from 'firebase/auth';
+import { logout } from '../services/auth';
 
 interface LayoutProps {
   children: React.ReactNode;
   onToggleChat: () => void;
+  user?: User; // Add user prop
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onToggleChat }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onToggleChat, user }) => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -27,6 +30,12 @@ const Layout: React.FC<LayoutProps> = ({ children, onToggleChat }) => {
 
   // Get Page Title from navItems
   const pageTitle = navItems.find(item => item.path === location.pathname)?.label || 'Chi tiết';
+
+  const handleLogout = async () => {
+      if(window.confirm('Bạn chắc chắn muốn đăng xuất?')) {
+          await logout();
+      }
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-pru-dark overflow-hidden transition-colors duration-300">
@@ -55,15 +64,22 @@ const Layout: React.FC<LayoutProps> = ({ children, onToggleChat }) => {
           </ul>
         </nav>
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-           <div className="flex items-center space-x-3 text-sm text-gray-500">
-             <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center">
-               <i className="fas fa-user text-white dark:text-gray-400"></i>
-             </div>
-             <div>
-               <p className="font-medium text-gray-900 dark:text-gray-100">Tư vấn viên</p>
+           <div className="flex items-center space-x-3 text-sm text-gray-500 mb-3">
+             {user?.photoURL ? (
+                 <img src={user.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border border-gray-200" />
+             ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center">
+                    <i className="fas fa-user text-white dark:text-gray-400"></i>
+                </div>
+             )}
+             <div className="overflow-hidden">
+               <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{user?.displayName || 'Tư vấn viên'}</p>
                <Link to="/settings" className="text-xs text-blue-500 hover:underline">Cấu hình</Link>
              </div>
            </div>
+           <button onClick={handleLogout} className="w-full py-2 flex items-center justify-center text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 rounded-lg transition">
+               <i className="fas fa-sign-out-alt mr-2"></i> Đăng xuất
+           </button>
         </div>
       </aside>
 
@@ -104,12 +120,12 @@ const Layout: React.FC<LayoutProps> = ({ children, onToggleChat }) => {
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
           <div className="md:hidden fixed inset-0 z-50 bg-gray-900/75 dark:bg-black/80 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}>
-            <div className="absolute top-0 left-0 w-64 h-full bg-white dark:bg-pru-card shadow-2xl overflow-y-auto transition-colors" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-0 left-0 w-64 h-full bg-white dark:bg-pru-card shadow-2xl overflow-y-auto transition-colors flex flex-col" onClick={e => e.stopPropagation()}>
                <div className="flex items-center justify-between p-4 border-b dark:border-gray-800 bg-pru-red text-white">
                   <span className="font-bold">Danh mục</span>
                   <button onClick={() => setIsMobileMenuOpen(false)}><i className="fas fa-times"></i></button>
                </div>
-               <nav className="py-2">
+               <nav className="py-2 flex-1">
                 <ul className="space-y-1 px-2">
                   {navItems.map((item) => (
                     <li key={item.path}>
@@ -127,6 +143,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onToggleChat }) => {
                   ))}
                 </ul>
               </nav>
+              <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+                  <button onClick={handleLogout} className="w-full py-2 flex items-center justify-center text-sm font-bold text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 rounded-lg transition">
+                    <i className="fas fa-sign-out-alt mr-2"></i> Đăng xuất
+                  </button>
+              </div>
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { User } from "firebase/auth";
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AIChat from './pages/AIChat';
@@ -13,11 +14,18 @@ import SettingsPage from './pages/Settings';
 import AdvisoryPage from './pages/Advisory';
 import MarketingPage from './pages/Marketing';
 import ProductAdvisoryPage from './pages/ProductAdvisory';
+import LoginPage from './pages/Login';
 
 import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile, Illustration, ContractStatus, PaymentFrequency } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
+import { subscribeToAuth } from './services/auth';
 
 const App: React.FC = () => {
+    // --- AUTH STATE ---
+    const [user, setUser] = useState<User | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
+    // --- APP DATA STATE ---
     const [state, setState] = useState<AppState>({
         customers: [],
         contracts: [],
@@ -32,22 +40,29 @@ const App: React.FC = () => {
         return localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
     });
 
-    // AI Chat State moved here
+    // AI Chat State
     const [isChatOpen, setIsChatOpen] = useState(false);
 
+    // --- AUTH LISTENER ---
     useEffect(() => {
-        if (isDarkMode) {
-            document.documentElement.classList.add('dark');
-            localStorage.theme = 'dark';
-        } else {
-            document.documentElement.classList.remove('dark');
-            localStorage.theme = 'light';
+        const unsubscribe = subscribeToAuth((currentUser) => {
+            setUser(currentUser);
+            setAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // --- DATA LISTENERS (Only when authenticated) ---
+    useEffect(() => {
+        if (!user) {
+            // Clear sensitive data on logout
+            setState({
+                customers: [], contracts: [], products: [], appointments: [], 
+                agentProfile: null, messageTemplates: [], illustrations: []
+            });
+            return;
         }
-    }, [isDarkMode]);
 
-    const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
-
-    useEffect(() => {
         const unsubs = [
             subscribeToCollection(COLLECTIONS.CUSTOMERS, (data) => setState(prev => ({ ...prev, customers: data }))),
             subscribeToCollection(COLLECTIONS.PRODUCTS, (data) => setState(prev => ({ ...prev, products: data }))),
@@ -60,8 +75,22 @@ const App: React.FC = () => {
             })
         ];
         return () => unsubs.forEach(unsub => unsub());
-    }, []);
+    }, [user]);
 
+    // --- THEME LOGIC ---
+    useEffect(() => {
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark');
+            localStorage.theme = 'dark';
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.theme = 'light';
+        }
+    }, [isDarkMode]);
+
+    const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+
+    // --- CRUD WRAPPERS ---
     const addCustomer = async (c: Customer) => await addData(COLLECTIONS.CUSTOMERS, c);
     const updateCustomer = async (c: Customer) => await updateData(COLLECTIONS.CUSTOMERS, c.id, c);
     const deleteCustomer = async (id: string) => await deleteData(COLLECTIONS.CUSTOMERS, id);
@@ -112,41 +141,62 @@ const App: React.FC = () => {
         }
     };
 
+    // --- LOADING SCREEN ---
+    if (authLoading) {
+        return (
+            <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
+                <div className="flex flex-col items-center">
+                    <div className="w-12 h-12 border-4 border-pru-red border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-gray-500 font-bold">Đang tải dữ liệu...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // --- ROUTING ---
     return (
         <Router>
-            <Layout onToggleChat={() => setIsChatOpen(!isChatOpen)}>
+            {!user ? (
                 <Routes>
-                    <Route path="/" element={<Dashboard state={state} onUpdateContract={updateContract} />} />
-                    <Route path="/customers" element={
-                        <CustomersPage 
-                            customers={state.customers} 
-                            contracts={state.contracts} 
-                            illustrations={state.illustrations}
-                            onAdd={addCustomer} 
-                            onUpdate={updateCustomer} 
-                            onDelete={deleteCustomer} 
-                            onConvertIllustration={convertIllustration}
-                            onDeleteIllustration={deleteIllustration}
-                        />
-                    } />
-                    <Route path="/product-advisory" element={
-                        <ProductAdvisoryPage 
-                            customers={state.customers} 
-                            products={state.products}
-                            onSaveIllustration={saveIllustration}
-                        />
-                    } />
-                    <Route path="/contracts" element={<ContractsPage contracts={state.contracts} customers={state.customers} products={state.products} onAdd={addContract} onUpdate={updateContract} onDelete={deleteContract} />} />
-                    <Route path="/products" element={<ProductsPage products={state.products} onAdd={addProduct} onUpdate={updateProduct} onDelete={deleteProduct} />} />
-                    <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
-                    <Route path="/marketing" element={<MarketingPage profile={state.agentProfile} />} />
-                    <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
-                    <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
-                    <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} onUpdateCustomer={updateCustomer} />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<LoginPage />} />
                 </Routes>
-            </Layout>
-            <AIChat state={state} isOpen={isChatOpen} setIsOpen={setIsChatOpen} />
+            ) : (
+                <>
+                    <Layout onToggleChat={() => setIsChatOpen(!isChatOpen)} user={user}>
+                        <Routes>
+                            <Route path="/" element={<Dashboard state={state} onUpdateContract={updateContract} />} />
+                            <Route path="/customers" element={
+                                <CustomersPage 
+                                    customers={state.customers} 
+                                    contracts={state.contracts} 
+                                    illustrations={state.illustrations}
+                                    onAdd={addCustomer} 
+                                    onUpdate={updateCustomer} 
+                                    onDelete={deleteCustomer} 
+                                    onConvertIllustration={convertIllustration}
+                                    onDeleteIllustration={deleteIllustration}
+                                />
+                            } />
+                            <Route path="/product-advisory" element={
+                                <ProductAdvisoryPage 
+                                    customers={state.customers} 
+                                    products={state.products}
+                                    onSaveIllustration={saveIllustration}
+                                />
+                            } />
+                            <Route path="/contracts" element={<ContractsPage contracts={state.contracts} customers={state.customers} products={state.products} onAdd={addContract} onUpdate={updateContract} onDelete={deleteContract} />} />
+                            <Route path="/products" element={<ProductsPage products={state.products} onAdd={addProduct} onUpdate={updateProduct} onDelete={deleteProduct} />} />
+                            <Route path="/appointments" element={<AppointmentsPage appointments={state.appointments} customers={state.customers} contracts={state.contracts} onAdd={addAppointment} onUpdate={updateAppointment} onDelete={deleteAppointment} />} />
+                            <Route path="/marketing" element={<MarketingPage profile={state.agentProfile} />} />
+                            <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
+                            <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
+                            <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} onUpdateCustomer={updateCustomer} />} />
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                    </Layout>
+                    <AIChat state={state} isOpen={isChatOpen} setIsOpen={setIsChatOpen} />
+                </>
+            )}
         </Router>
     );
 };

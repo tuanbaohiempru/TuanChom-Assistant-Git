@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { AppState } from '../types';
 import { chatWithData } from '../services/geminiService';
 import { cleanMarkdownForClipboard } from '../components/Shared';
+import DOMPurify from 'dompurify';
 
 interface AIChatProps {
   state: AppState;
@@ -116,9 +117,10 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
       setTimeout(() => setCopiedIndex(null), 2000);
   };
 
-  // --- Advanced Message Formatter ---
+  // --- Advanced Message Formatter with DOMPurify ---
   const formatMessage = (text: string) => {
     let html = text;
+    // Basic escaping first to treat input as text, not HTML
     html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     // Tables
@@ -154,7 +156,8 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
     html = html.replace(/(Chờ thẩm định|Tiềm năng)/g, '<span class="text-yellow-700 font-bold bg-yellow-100 px-2 py-0.5 rounded text-xs border border-yellow-200">$1</span>');
     html = html.replace(/\n/g, '<br />');
 
-    return html;
+    // Final Sanitization
+    return DOMPurify.sanitize(html, { ADD_ATTR: ['class', 'style', 'target'] });
   };
 
   // Z-INDEX FIX: Container must be higher than backdrop (z-50 vs z-60)
