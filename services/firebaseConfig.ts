@@ -5,10 +5,9 @@ import { getStorage } from "firebase/storage";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFunctions } from "firebase/functions";
 
-// Cấu hình Firebase lấy từ biến môi trường
-// Bạn cần tạo file .env và điền các giá trị này vào
+// Cấu hình Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyBucXUKg5bsEv7mmVA2q3t5g2zzKvpA7qQ",
+  apiKey: "AIzaSyCsEN54ATNNnVTzsp0atsteocHAqCxUOs0",
   authDomain: "studio-5841594141-93fc7.firebaseapp.com",
   projectId: "studio-5841594141-93fc7",
   storageBucket: "studio-5841594141-93fc7.firebasestorage.app",
@@ -20,7 +19,7 @@ const firebaseConfig = {
 const isConfigured = Object.values(firebaseConfig).every(val => !!val);
 
 if (!isConfigured) {
-    console.warn("⚠️ Cảnh báo: Chưa cấu hình đầy đủ thông tin Firebase trong file .env. Ứng dụng có thể không hoạt động đúng.");
+    console.warn("⚠️ Cảnh báo: Chưa cấu hình đầy đủ thông tin Firebase. Ứng dụng có thể không hoạt động đúng.");
 }
 
 // Khởi tạo Firebase
