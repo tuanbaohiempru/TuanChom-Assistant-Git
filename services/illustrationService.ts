@@ -1,6 +1,8 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Product, Illustration, Gender, ContractProduct, ProductType, ProductStatus } from "../types";
+import { Product, Illustration, Gender, ContractProduct, ProductType, ProductStatus, ProductCalculationType } from "../types";
+import { calculateProductFee } from "./productCalculator";
+import { HTVKPlan, HTVKPackage } from "../data/pruHanhTrangVuiKhoe";
 
 interface AIRecommendation {
     mainProduct: {
@@ -39,7 +41,7 @@ export const generateIllustration = async (
             .join('\n');
 
         const systemInstruction = `
-            Bạn là Chuyên gia Hoạch định Tài chính Prudential (PruMate).
+            Bạn là Chuyên gia Hoạch định Tài chính Prudential (TuanChom).
             
             NHIỆM VỤ:
             Thiết kế một Bảng minh họa quyền lợi bảo hiểm (Gói giải pháp) tối ưu nhất cho khách hàng dựa trên thông tin được cung cấp.
@@ -64,7 +66,7 @@ export const generateIllustration = async (
                     {
                         "productName": "Tên chính xác rider 1",
                         "sumAssured": Số_tiền_bảo_hiểm (Number),
-                        "plan": "Tên gói (nếu là thẻ sức khỏe: Cơ bản/Nâng cao/Toàn diện/Hoàn hảo)"
+                        "plan": "Tên gói (Nếu là thẻ sức khỏe hãy chọn một trong: Cơ bản, Nâng cao, Toàn diện, Hoàn hảo)"
                     }
                 ],
                 "reasoning": "Giải thích ngắn gọn tại sao chọn gói này (tối đa 3 câu)."
@@ -98,33 +100,48 @@ export const generateIllustration = async (
 
         const result: AIRecommendation = JSON.parse(text);
 
-        // --- Post-Processing: Calculate Fees locally ---
-        // Note: In a real app, this should call the exact calculation engine used in ContractsPage.
-        // For now, we will estimate or use simplified logic similar to ContractsPage to make it realistic.
+        // --- Post-Processing: Calculate Fees using REAL Engine ---
+        const age = new Date().getFullYear() - customerInfo.birthYear;
         
+        // 1. Calculate Main Product Fee
         const mainProdRef = activeProducts.find(p => p.name === result.mainProduct.productName);
         let mainFee = 0;
-        // Simple estimation if exact calc is complex to replicate here completely without importing everything
-        // Assuming ~1.5-2% of SumAssured for Main Product (UL/ILP) roughly
+        
         if (mainProdRef) {
-             mainFee = Math.round(result.mainProduct.sumAssured * 0.018); 
+             mainFee = calculateProductFee({
+                product: mainProdRef,
+                calculationType: mainProdRef.calculationType || ProductCalculationType.FIXED,
+                productCode: mainProdRef.code,
+                sumAssured: result.mainProduct.sumAssured,
+                age: age,
+                gender: customerInfo.gender,
+                term: 15, // Default term for AI suggestions
+                occupationGroup: 1 // Default occupation
+             });
         }
 
+        // 2. Calculate Riders Fee
         const riders: ContractProduct[] = result.riders.map(r => {
             const riderRef = activeProducts.find(p => p.name === r.productName);
             let riderFee = 0;
             
-            if (r.productName.toLowerCase().includes('sức khỏe')) {
-                // Health care is roughly fixed based on plan
-                if (r.plan?.includes('Toàn diện')) riderFee = 5000000;
-                else if (r.plan?.includes('Hoàn hảo')) riderFee = 8000000;
-                else riderFee = 3000000;
-            } else if (r.productName.toLowerCase().includes('bệnh lý') || r.productName.toLowerCase().includes('hiểm nghèo')) {
-                riderFee = Math.round(r.sumAssured * 0.01); // ~1%
-            } else if (r.productName.toLowerCase().includes('tai nạn')) {
-                riderFee = Math.round(r.sumAssured * 0.003); // ~0.3%
-            } else {
-                riderFee = Math.round(r.sumAssured * 0.005);
+            if (riderRef) {
+                // Map Plan String from AI to Enum (e.g. "Toàn diện" -> HTVKPlan.TOAN_DIEN)
+                // The calculator uses fuzzy matching (removeAccents) so passing string is fine.
+                const planString = r.plan || HTVKPlan.NANG_CAO;
+                
+                riderFee = calculateProductFee({
+                    product: riderRef,
+                    calculationType: riderRef.calculationType || ProductCalculationType.FIXED,
+                    productCode: riderRef.code,
+                    sumAssured: r.sumAssured,
+                    age: age,
+                    gender: customerInfo.gender,
+                    term: 15, 
+                    occupationGroup: 1,
+                    htvkPlan: planString as HTVKPlan,
+                    htvkPackage: HTVKPackage.STANDARD
+                });
             }
 
             return {

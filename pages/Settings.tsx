@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { AgentProfile } from '../types';
+import { AgentProfile, SalesTargets } from '../types';
 import { uploadFile } from '../services/storage';
+import { CurrencyInput } from '../components/Shared';
 
 interface SettingsPageProps {
     profile: AgentProfile | null;
@@ -23,17 +24,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
         office: '',
         agentCode: '',
         title: '',
-        bio: ''
+        bio: '',
+        targets: { weekly: 0, monthly: 0, quarterly: 0, yearly: 0 } // Initialize targets
     });
     const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
-        if (profile) setFormData(prev => ({...prev, ...profile}));
+        if (profile) {
+            setFormData(prev => ({
+                ...prev, 
+                ...profile,
+                targets: profile.targets || { weekly: 0, monthly: 0, quarterly: 0, yearly: 0 }
+            }));
+        }
     }, [profile]);
 
     const handleSubmit = () => {
         onSave(formData);
-        alert("Đã lưu thông tin tư vấn viên!");
+        alert("Đã lưu thông tin cài đặt!");
     };
 
     const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,59 +110,107 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
                 </div>
 
                 {/* Right Col: Forms */}
-                <div className="lg:col-span-2 bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 space-y-6 transition-colors">
-                    <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4">Thông tin cá nhân</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="label-style">Họ và tên</label>
-                            <input className="input-style" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} placeholder="Nguyễn Văn A" />
-                        </div>
-                        <div>
-                            <label className="label-style">Tuổi</label>
-                            <input type="number" className="input-style" value={formData.age} onChange={e => setFormData({...formData, age: Number(e.target.value)})} />
-                        </div>
-                        <div>
-                            <label className="label-style">Mã số nhân viên</label>
-                            <input className="input-style" value={formData.agentCode} onChange={e => setFormData({...formData, agentCode: e.target.value})} placeholder="600xxxxx" />
-                        </div>
-                        <div>
-                            <label className="label-style">Danh hiệu / Chức danh</label>
-                            <input className="input-style" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="MDRT, Trưởng nhóm kinh doanh..." />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="label-style">Văn phòng / Khu vực</label>
-                            <input className="input-style" value={formData.office} onChange={e => setFormData({...formData, office: e.target.value})} placeholder="Prudential Plaza, Quận 8..." />
-                        </div>
-                        <div className="md:col-span-2">
-                             <label className="label-style">Giới thiệu ngắn (Phong cách)</label>
-                             <textarea rows={3} className="input-style" value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} placeholder="Ví dụ: Tôi là người tư vấn tận tâm, luôn đặt lợi ích khách hàng lên đầu..." />
-                        </div>
-                    </div>
-
-                    <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4 pt-4">Liên hệ & Mạng xã hội</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="label-style">Số điện thoại <span className="text-red-500">*</span></label>
-                            <input className="input-style" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label-style">Email</label>
-                            <input className="input-style" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="label-style">Số Zalo</label>
-                            <input className="input-style" value={formData.zalo} onChange={e => setFormData({...formData, zalo: e.target.value})} placeholder="09xxxx (để tạo link Zalo)" />
-                        </div>
-                        <div>
-                            <label className="label-style">Link Facebook</label>
-                            <input className="input-style" value={formData.facebook} onChange={e => setFormData({...formData, facebook: e.target.value})} placeholder="https://facebook.com/..." />
+                <div className="lg:col-span-2 space-y-6">
+                    {/* 1. SALES TARGETS (NEW) */}
+                    <div className="bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4 flex items-center">
+                            <i className="fas fa-crosshairs text-pru-red mr-2"></i> Thiết lập Mục tiêu Doanh số (VNĐ)
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-style">Mục tiêu Tuần</label>
+                                <CurrencyInput 
+                                    className="input-style font-bold text-blue-600" 
+                                    value={formData.targets?.weekly || 0} 
+                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, weekly: v}})} 
+                                    placeholder="0"
+                                />
+                            </div>
+                            <div>
+                                <label className="label-style">Mục tiêu Tháng</label>
+                                <CurrencyInput 
+                                    className="input-style font-bold text-green-600" 
+                                    value={formData.targets?.monthly || 0} 
+                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, monthly: v}})} 
+                                    placeholder="0"
+                                />
+                            </div>
+                            <div>
+                                <label className="label-style">Mục tiêu Quý</label>
+                                <CurrencyInput 
+                                    className="input-style font-bold text-orange-600" 
+                                    value={formData.targets?.quarterly || 0} 
+                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, quarterly: v}})} 
+                                    placeholder="0"
+                                />
+                            </div>
+                            <div>
+                                <label className="label-style">Mục tiêu Năm</label>
+                                <CurrencyInput 
+                                    className="input-style font-bold text-pru-red" 
+                                    value={formData.targets?.yearly || 0} 
+                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, yearly: v}})} 
+                                    placeholder="0"
+                                />
+                            </div>
                         </div>
                     </div>
 
-                    <div className="pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-end">
-                        <button onClick={handleSubmit} className="bg-pru-red text-white px-6 py-2.5 rounded-lg hover:bg-red-700 transition shadow-md font-bold">
-                            <i className="fas fa-save mr-2"></i>Lưu thay đổi
-                        </button>
+                    {/* 2. PROFILE INFO */}
+                    <div className="bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4">Thông tin cá nhân</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-style">Họ và tên</label>
+                                <input className="input-style" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} placeholder="Nguyễn Văn A" />
+                            </div>
+                            <div>
+                                <label className="label-style">Tuổi</label>
+                                <input type="number" className="input-style" value={formData.age} onChange={e => setFormData({...formData, age: Number(e.target.value)})} />
+                            </div>
+                            <div>
+                                <label className="label-style">Mã số nhân viên</label>
+                                <input className="input-style" value={formData.agentCode} onChange={e => setFormData({...formData, agentCode: e.target.value})} placeholder="600xxxxx" />
+                            </div>
+                            <div>
+                                <label className="label-style">Danh hiệu / Chức danh</label>
+                                <input className="input-style" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="MDRT, Trưởng nhóm kinh doanh..." />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="label-style">Văn phòng / Khu vực</label>
+                                <input className="input-style" value={formData.office} onChange={e => setFormData({...formData, office: e.target.value})} placeholder="Prudential Plaza, Quận 8..." />
+                            </div>
+                            <div className="md:col-span-2">
+                                 <label className="label-style">Giới thiệu ngắn (Phong cách)</label>
+                                 <textarea rows={3} className="input-style" value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} placeholder="Ví dụ: Tôi là người tư vấn tận tâm, luôn đặt lợi ích khách hàng lên đầu..." />
+                            </div>
+                        </div>
+
+                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4 pt-4">Liên hệ & Mạng xã hội</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-style">Số điện thoại <span className="text-red-500">*</span></label>
+                                <input className="input-style" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="label-style">Email</label>
+                                <input className="input-style" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="label-style">Số Zalo</label>
+                                <input className="input-style" value={formData.zalo} onChange={e => setFormData({...formData, zalo: e.target.value})} placeholder="09xxxx (để tạo link Zalo)" />
+                            </div>
+                            <div>
+                                <label className="label-style">Link Facebook</label>
+                                <input className="input-style" value={formData.facebook} onChange={e => setFormData({...formData, facebook: e.target.value})} placeholder="https://facebook.com/..." />
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+                            <button onClick={handleSubmit} className="bg-pru-red text-white px-6 py-2.5 rounded-lg hover:bg-red-700 transition shadow-md font-bold">
+                                <i className="fas fa-save mr-2"></i>Lưu thay đổi
+                            </button>
+                        </div>
                     </div>
                 </div>
              </div>

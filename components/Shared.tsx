@@ -25,11 +25,33 @@ export const formatAdvisoryContent = (text: string) => {
 
 export const cleanMarkdownForClipboard = (text: string) => {
     let clean = text;
-    clean = clean.replace(/^###\s+(.*$)/gim, (match, p1) => p1.toUpperCase());
+    
+    // 0. Remove Table Separator lines (e.g. |---|---|)
+    clean = clean.replace(/^\|?[\s\-\|:]+\|?$/gm, '');
+
+    // 1. Convert Headers (### Title) to Uppercase for emphasis in plain text
+    clean = clean.replace(/^###\s+(.*$)/gim, (match, p1) => `\n${p1.toUpperCase()}\n`);
+    clean = clean.replace(/^##\s+(.*$)/gim, (match, p1) => `\n${p1.toUpperCase()}\n`);
+    
+    // 2. Remove Bold (**text**) -> text
     clean = clean.replace(/\*\*(.*?)\*\*/g, '$1');
+    
+    // 3. Remove Italic (*text*) -> text
     clean = clean.replace(/\*(.*?)\*/g, '$1');
+    
+    // 4. Convert List Items (- item) to Bullet points (• item) which look better on Zalo
     clean = clean.replace(/^\-\s+/gim, '• ');
-    return clean;
+
+    // 5. Handle Table Rows: | Cell | Cell | -> Cell - Cell
+    // Remove starting/ending pipes
+    clean = clean.replace(/^\|/gm, '').replace(/\|$/gm, '');
+    // Replace internal pipes with dash
+    clean = clean.replace(/\|/g, ' - ');
+    
+    // 6. Clean extra newlines
+    clean = clean.replace(/\n\n+/g, '\n\n');
+    
+    return clean.trim();
 };
 
 // --- SHARED COMPONENTS ---

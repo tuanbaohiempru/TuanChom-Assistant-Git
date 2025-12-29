@@ -1,10 +1,14 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppState } from '../types';
 import { chatWithData } from '../services/geminiService';
+import { cleanMarkdownForClipboard } from '../components/Shared';
 
 interface AIChatProps {
   state: AppState;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
 }
 
 // Declare Web Speech API types for TypeScript
@@ -15,31 +19,33 @@ declare global {
   }
 }
 
-const AIChat: React.FC<AIChatProps> = ({ state }) => {
+const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false); // False = Floating, True = Side Dock
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
-    { role: 'model', text: 'Xin chào! Tôi là **PruMate**. \nTôi có thể giúp bạn tra cứu nhanh:\n- Thông tin hợp đồng & phí\n- Quyền lợi & Điều khoản sản phẩm\n- Lịch sử chăm sóc khách hàng' }
+    { role: 'model', text: 'Xin chào! Tôi là **TuanChom**. \nTôi có thể giúp bạn tra cứu nhanh:\n- Thông tin hợp đồng & phí\n- Quyền lợi & Điều khoản sản phẩm\n- Lịch sử chăm sóc khách hàng' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
   // Voice Recognition State
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Check if we are on the Advisory page to hide the button
-  const isAdvisoryPage = location.pathname.includes('/advisory');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (isOpen) {
+        scrollToBottom();
+        // Auto focus input when opened
+        setTimeout(() => inputRef.current?.focus(), 300);
+    }
   }, [messages, isOpen, isExpanded]);
 
   // --- Voice Recognition Setup ---
@@ -47,12 +53,11 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = false; // Stop automatically after silence
-      recognition.interimResults = true; // Show results while speaking
-      recognition.lang = 'vi-VN'; // Vietnamese
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'vi-VN';
 
       recognition.onstart = () => setIsListening(true);
-      
       recognition.onend = () => setIsListening(false);
       
       recognition.onresult = (event: any) => {
@@ -74,13 +79,13 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói. Vui lòng dùng Chrome hoặc Safari.");
+      alert("Trình duyệt không hỗ trợ giọng nói.");
       return;
     }
     if (isListening) {
       recognitionRef.current.stop();
     } else {
-      setQuery(''); // Clear input when starting new recording
+      setQuery('');
       recognitionRef.current.start();
     }
   };
@@ -102,6 +107,13 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
 
     setMessages(prev => [...prev, { role: 'model', text: response }]);
     setIsLoading(false);
+  };
+
+  const handleCopy = (text: string, index: number) => {
+      const cleanText = cleanMarkdownForClipboard(text);
+      navigator.clipboard.writeText(cleanText);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
   };
 
   // --- Advanced Message Formatter ---
@@ -131,40 +143,31 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
         return tableHtml;
     });
 
-    // Headers
     html = html.replace(/^### (.*$)/gim, '<h3 class="text-pru-red font-bold text-base mt-4 mb-2 border-b border-red-100 pb-1 flex items-center"><i class="fas fa-info-circle mr-2 text-xs"></i>$1</h3>');
     html = html.replace(/^## (.*$)/gim, '<h2 class="text-gray-800 font-bold text-lg mt-3 mb-2">$1</h2>');
-    // Bold
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>');
-    // Lists
     html = html.replace(/^\- (.*$)/gim, '<li class="ml-4 list-disc marker:text-pru-red pl-1 text-gray-700 mb-1">$1</li>');
     html = html.replace(/((?:<li.*?>.*?<\/li>\n?)+)/g, '<ul class="my-2 space-y-1">$1</ul>');
-    // Highlights
     html = html.replace(/(\d{1,3}(?:\.\d{3})+(?:\s?đ|\s?VND))/g, '<span class="font-mono font-bold text-pru-red bg-red-50 px-1 rounded">$1</span>');
     html = html.replace(/(Đang hiệu lực)/g, '<span class="text-green-700 font-bold bg-green-100 px-2 py-0.5 rounded text-xs border border-green-200">$1</span>');
     html = html.replace(/(Mất hiệu lực|Đã hủy)/g, '<span class="text-red-700 font-bold bg-red-100 px-2 py-0.5 rounded text-xs border border-red-200">$1</span>');
     html = html.replace(/(Chờ thẩm định|Tiềm năng)/g, '<span class="text-yellow-700 font-bold bg-yellow-100 px-2 py-0.5 rounded text-xs border border-yellow-200">$1</span>');
-    // Breaks
     html = html.replace(/\n/g, '<br />');
 
     return html;
   };
 
-  // Dynamic Classes based on Expanded State
-  // Moved to LEFT-6 instead of RIGHT-6
+  // Z-INDEX FIX: Container must be higher than backdrop (z-50 vs z-60)
   const containerClasses = isExpanded
-    ? "fixed top-0 right-0 h-full w-[500px] max-w-full bg-white shadow-2xl flex flex-col border-l border-gray-200 z-[60] transition-all duration-300 ease-in-out" // Docked Mode
-    : "fixed bottom-24 left-6 w-[400px] max-w-[90vw] h-[600px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-50"; // Floating Mode (Moved to Left)
-
-  // If in Advisory Page and NOT open, do not render the floating button
-  if (isAdvisoryPage && !isOpen) return null;
+    ? "fixed top-0 right-0 h-full w-[500px] max-w-full bg-white shadow-2xl flex flex-col border-l border-gray-200 z-[70] transition-all duration-300 ease-in-out" 
+    : "fixed top-20 right-6 w-[400px] max-w-[90vw] h-[600px] max-h-[70vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-[60]";
 
   return (
     <>
-      {/* Dimmed Background when Expanded */}
-      {isOpen && isExpanded && (
+      {/* Dimmed Background: z-index must be LOWER than chat container */}
+      {isOpen && (
         <div 
-            className="fixed inset-0 bg-black/20 backdrop-blur-[1px] z-[55] transition-opacity" 
+            className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[55] transition-opacity"
             onClick={() => setIsOpen(false)}
         />
       )}
@@ -174,16 +177,16 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
         <div className={`${containerClasses} animate-fade-in`}>
           
           {/* Header */}
-          <div className={`bg-gradient-to-r from-pru-red to-red-700 p-4 flex justify-between items-center text-white shadow-md ${isExpanded ? '' : 'cursor-move'}`}>
+          <div className={`bg-gradient-to-r from-pru-red to-red-700 p-4 flex justify-between items-center text-white shadow-md`}>
             <div className="flex items-center">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mr-3 backdrop-blur-sm border border-white/30">
                     <i className="fas fa-robot text-lg"></i>
                 </div>
                 <div>
-                    <h3 className="font-bold text-base">PruMate AI</h3>
+                    <h3 className="font-bold text-base">TuanChom AI</h3>
                     <p className="text-xs opacity-90 flex items-center">
                         <span className="w-2 h-2 bg-green-400 rounded-full mr-1.5 animate-pulse"></span>
-                        Trực tuyến
+                        Đang sẵn sàng
                     </p>
                 </div>
             </div>
@@ -194,14 +197,6 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
                     title={isExpanded ? "Thu nhỏ" : "Mở rộng"}
                  >
                     <i className={`fas ${isExpanded ? 'fa-compress-alt' : 'fa-expand-alt'} text-sm`}></i>
-                </button>
-                
-                 <button 
-                    onClick={() => setMessages([])} 
-                    className="text-white/80 hover:bg-white/10 p-2 rounded transition w-8 h-8 flex items-center justify-center" 
-                    title="Xóa đoạn chat"
-                >
-                    <i className="fas fa-trash-alt text-sm"></i>
                 </button>
                 
                 <button 
@@ -217,25 +212,41 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-5 scroll-smooth">
             {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
+              <div key={idx} className={`flex group ${msg.role === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
                 {msg.role === 'model' && (
                     <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex-shrink-0 mr-2 flex items-center justify-center shadow-sm mt-1">
                         <i className="fas fa-robot text-pru-red text-xs"></i>
                     </div>
                 )}
                 <div 
-                  className={`max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                  className={`relative max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm ${
                     msg.role === 'user' 
                       ? 'bg-pru-red text-white rounded-br-none' 
                       : 'bg-white border border-gray-100 text-gray-800 rounded-bl-none'
                   }`}
                 >
                   {msg.role === 'model' ? (
-                      <div className="prose prose-sm max-w-none text-gray-800" 
+                      <div className="prose prose-sm max-w-none text-gray-800 pb-2" 
                         dangerouslySetInnerHTML={{ __html: formatMessage(msg.text) }} 
                       />
                   ) : (
                       msg.text
+                  )}
+
+                  {/* Smart Copy Button for Model Messages */}
+                  {msg.role === 'model' && (
+                      <button 
+                          onClick={() => handleCopy(msg.text, idx)}
+                          className={`absolute bottom-1 right-1 p-1.5 rounded-md transition-all duration-200 flex items-center gap-1 ${
+                              copiedIndex === idx 
+                              ? 'bg-green-100 text-green-600 opacity-100' 
+                              : 'bg-gray-100 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100'
+                          }`}
+                          title="Sao chép (Đã làm sạch cho Zalo)"
+                      >
+                          <i className={`fas ${copiedIndex === idx ? 'fa-check' : 'fa-copy'} text-xs`}></i>
+                          {copiedIndex === idx && <span className="text-[10px] font-bold">Đã chép</span>}
+                      </button>
                   )}
                 </div>
               </div>
@@ -259,70 +270,39 @@ const AIChat: React.FC<AIChatProps> = ({ state }) => {
 
           {/* Input Area */}
           <div className="p-4 bg-white border-t border-gray-100">
-            {isListening && (
-               <div className="text-center text-xs text-red-500 font-bold mb-2 animate-pulse flex justify-center items-center">
-                   <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
-                   Đang nghe bạn nói...
-               </div>
-            )}
             <div className="relative shadow-sm rounded-full">
-                {/* Voice Input Button */}
                 <button
                     onClick={toggleListening}
                     className={`absolute left-1.5 top-1.5 w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                         isListening 
-                        ? 'bg-red-100 text-red-600 ring-2 ring-red-400 ring-opacity-50' 
+                        ? 'bg-red-100 text-red-600 ring-2 ring-red-400' 
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
-                    title="Nhập bằng giọng nói"
                 >
                     <i className={`fas ${isListening ? 'fa-microphone-slash' : 'fa-microphone'}`}></i>
                 </button>
 
                 <input
+                    ref={inputRef}
                     type="text"
-                    className="w-full pl-14 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all placeholder-gray-400 text-gray-700"
-                    placeholder={isListening ? "Đang nghe..." : "Hỏi PruMate (hoặc micro để nói)..."}
+                    className="w-full pl-14 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all text-gray-700"
+                    placeholder={isListening ? "Đang nghe..." : "Nhập câu hỏi tại đây..."}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     disabled={isLoading}
-                    autoFocus
                 />
                 
                 <button 
                     onClick={handleSend}
                     disabled={isLoading || !query.trim()}
-                    className="absolute right-1.5 top-1.5 w-10 h-10 bg-gradient-to-br from-pru-red to-red-600 text-white rounded-full flex items-center justify-center hover:shadow-md disabled:opacity-50 disabled:shadow-none transition-all transform hover:scale-105 active:scale-95"
+                    className="absolute right-1.5 top-1.5 w-10 h-10 bg-pru-red text-white rounded-full flex items-center justify-center hover:bg-red-700 disabled:opacity-50 transition-all"
                 >
                     <i className="fas fa-paper-plane text-xs"></i>
                 </button>
             </div>
-            <div className="mt-2 flex justify-center gap-3 text-[10px] text-gray-400">
-                <span className="flex items-center"><i className="fas fa-shield-alt mr-1"></i>Bảo mật dữ liệu</span>
-                <span className="flex items-center"><i className="fas fa-bolt mr-1"></i>Gemini Flash AI</span>
-            </div>
           </div>
         </div>
-      )}
-
-      {/* Floating Launcher Button - MOVED TO LEFT-6 */}
-      {!isOpen && !isAdvisoryPage && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 left-6 z-50 group w-16 h-16 bg-gradient-to-br from-pru-red to-red-700 text-white rounded-full shadow-lg shadow-red-500/30 flex items-center justify-center transition-all hover:scale-110 hover:-translate-y-1"
-        >
-          <span className="absolute w-full h-full rounded-full bg-red-400 opacity-75 animate-ping group-hover:opacity-0"></span>
-          <i className="fas fa-comment-dots text-2xl relative z-10"></i>
-          
-          {/* Badge */}
-          <span className="absolute top-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full z-20"></span>
-          
-          {/* Tooltip - MOVED TO RIGHT SIDE OF BUTTON */}
-          <span className="absolute left-full ml-3 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-            Hỏi PruMate AI
-          </span>
-        </button>
       )}
     </>
   );

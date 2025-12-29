@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { AppState, ContractStatus, AppointmentStatus, CustomerStatus, ReadinessLevel, Contract, Customer, AppointmentType } from '../types';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { formatDateVN } from '../components/Shared';
@@ -10,7 +11,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ state }) => {
-  const { customers, contracts, appointments, messageTemplates } = state;
+  const { customers, contracts, appointments, agentProfile } = state;
   const [activeTab, setActiveTab] = useState<'tasks' | 'pipeline'>('tasks');
   
   // Action Modal State
@@ -18,35 +19,67 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
       isOpen: false, type: 'call', customer: null
   });
 
-  // --- 1. METRICS CALCULATION ---
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth();
+  // --- 1. GOAL & SALES TRACKING LOGIC ---
+  const salesMetrics = useMemo(() => {
+    const today = new Date();
+    
+    // Define Time Ranges
+    const getWeekRange = () => {
+        const first = today.getDate() - today.getDay() + 1; // Monday
+        const last = first + 6; // Sunday
+        return {
+            start: new Date(today.setDate(first)).setHours(0,0,0,0),
+            end: new Date(today.setDate(last)).setHours(23,59,59,999)
+        };
+    };
+    
+    const getMonthRange = () => ({
+        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
+        end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime()
+    });
 
-  // MDRT Tracking (Target: 1 Billion VND)
-  const MDRT_TARGET = 1000000000; 
-  const currentFYP = contracts
-    .filter(c => new Date(c.effectiveDate).getFullYear() === currentYear && c.status === ContractStatus.ACTIVE)
-    .reduce((sum, c) => sum + c.totalFee, 0);
-  const mdrtProgress = Math.min((currentFYP / MDRT_TARGET) * 100, 100);
+    const getQuarterRange = () => {
+        const currQuarter = Math.floor(new Date().getMonth() / 3);
+        return {
+            start: new Date(new Date().getFullYear(), currQuarter * 3, 1).getTime(),
+            end: new Date(new Date().getFullYear(), currQuarter * 3 + 3, 0).getTime()
+        };
+    };
 
-  // Monthly Revenue
-  const revenueThisMonth = contracts
-    .filter(c => {
-        const d = new Date(c.effectiveDate);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear && c.status === ContractStatus.ACTIVE;
-    })
-    .reduce((sum, c) => sum + c.totalFee, 0);
+    const getYearRange = () => ({
+        start: new Date(new Date().getFullYear(), 0, 1).getTime(),
+        end: new Date(new Date().getFullYear(), 11, 31).getTime()
+    });
 
-  // Hot Prospects
-  const hotCustomers = customers.filter(c => c.analysis?.readiness === ReadinessLevel.HOT && c.status !== CustomerStatus.SIGNED);
+    const ranges = {
+        week: getWeekRange(),
+        month: getMonthRange(),
+        quarter: getQuarterRange(),
+        year: getYearRange()
+    };
 
-  // Pending Contracts
-  const pendingContracts = contracts.filter(c => c.status === ContractStatus.PENDING).length;
+    // Calculate Actual Sales (Based on Total Fee of ACTIVE contracts within range)
+    const calculateSales = (start: number, end: number) => {
+        return contracts
+            .filter(c => {
+                const effDate = new Date(c.effectiveDate).getTime();
+                return c.status === ContractStatus.ACTIVE && effDate >= start && effDate <= end;
+            })
+            .reduce((sum, c) => sum + c.totalFee, 0);
+    };
 
-  // Persistency Rate (K2 Mock: Active / (Active + Lapsed))
-  const activeCount = contracts.filter(c => c.status === ContractStatus.ACTIVE).length;
-  const lapsedCount = contracts.filter(c => c.status === ContractStatus.LAPSED).length;
-  const k2Rate = activeCount + lapsedCount > 0 ? Math.round((activeCount / (activeCount + lapsedCount)) * 100) : 100;
+    const actual = {
+        week: calculateSales(ranges.week.start, ranges.week.end),
+        month: calculateSales(ranges.month.start, ranges.month.end),
+        quarter: calculateSales(ranges.quarter.start, ranges.quarter.end),
+        year: calculateSales(ranges.year.start, ranges.year.end)
+    };
+
+    // Get Targets from Profile (Default to 0 if not set)
+    const targets = agentProfile?.targets || { weekly: 0, monthly: 0, quarterly: 0, yearly: 0 };
+
+    return { actual, targets };
+  }, [contracts, agentProfile]);
 
   // --- 2. SMART TASKS (ACTION CENTER) ---
   const smartTasks = useMemo(() => {
@@ -91,7 +124,8 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         }
     });
 
-    // B. Important: Hot Customers not interacted recently
+    // B. Important: Hot Customers (Ready to close)
+    const hotCustomers = customers.filter(c => c.analysis?.readiness === ReadinessLevel.HOT && c.status !== CustomerStatus.SIGNED);
     hotCustomers.forEach(c => {
         tasks.push({
             id: `hot-${c.id}`, type: 'important',
@@ -139,7 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
     const priorityMap = { urgent: 0, important: 1, normal: 2 };
     return tasks.sort((a, b) => priorityMap[a.type] - priorityMap[b.type]);
 
-  }, [customers, contracts, appointments, hotCustomers]);
+  }, [customers, contracts, appointments]);
 
   // --- 3. CHART DATA ---
   const chartData = useMemo(() => {
@@ -175,44 +209,51 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
   return (
     <div className="space-y-6 pb-10 transition-colors duration-300">
       
-      {/* 1. MDRT PROGRESS BANNER */}
-      <div className="bg-gradient-to-r from-gray-900 to-gray-800 dark:from-black dark:to-gray-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden transition-all">
-         <div className="absolute top-0 right-0 opacity-10 transform translate-x-10 -translate-y-10">
-             <i className="fas fa-trophy text-9xl text-yellow-500"></i>
-         </div>
-         <div className="relative z-10">
-             <div className="flex justify-between items-end mb-2">
-                 <div>
-                     <h2 className="text-2xl font-bold text-yellow-400 flex items-center gap-2">
-                         <i className="fas fa-medal"></i> Hành trình MDRT {currentYear}
-                     </h2>
-                     <p className="text-gray-400 text-sm mt-1">Mục tiêu: 1 Tỷ VNĐ FYP</p>
-                 </div>
-                 <div className="text-right">
-                     <p className="text-3xl font-bold">{(currentFYP / 1000000).toFixed(0)} <span className="text-sm font-normal text-gray-400">triệu</span></p>
-                     <p className="text-xs text-gray-400">Đạt {mdrtProgress.toFixed(1)}%</p>
-                 </div>
-             </div>
-             <div className="w-full bg-gray-700 dark:bg-gray-800 rounded-full h-4 overflow-hidden border border-gray-600 dark:border-gray-700">
-                 <div 
-                    className="bg-gradient-to-r from-yellow-600 to-yellow-300 h-full rounded-full transition-all duration-1000 ease-out relative"
-                    style={{ width: `${mdrtProgress}%` }}
-                 >
-                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                 </div>
-             </div>
-         </div>
+      {/* 1. SALES GOAL TRACKING (Replaces Old Metrics) */}
+      <div className="flex justify-between items-end mb-2">
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
+              <i className="fas fa-crosshairs text-pru-red mr-2"></i> Mục tiêu & Doanh số
+          </h2>
+          <Link to="/settings" className="text-sm text-blue-500 hover:underline flex items-center">
+              <i className="fas fa-cog mr-1"></i> Cài đặt mục tiêu
+          </Link>
       </div>
 
-      {/* 2. KEY METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard title="Doanh số tháng" value={`${(revenueThisMonth / 1000000).toFixed(0)} Tr`} icon="fa-chart-line" color="text-green-600" bg="bg-green-50 dark:bg-green-900/10" />
-          <MetricCard title="HĐ Pending" value={pendingContracts} icon="fa-file-signature" color="text-blue-600" bg="bg-blue-50 dark:bg-blue-900/10" />
-          <MetricCard title="Khách HOT" value={hotCustomers.length} icon="fa-fire" color="text-orange-500" bg="bg-orange-50 dark:bg-orange-900/10" />
-          <MetricCard title="Tỷ lệ duy trì" value={`${k2Rate}%`} icon="fa-shield-alt" color="text-purple-600" bg="bg-purple-50 dark:bg-purple-900/10" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <GoalCard 
+              title="Tuần này" 
+              actual={salesMetrics.actual.week} 
+              target={salesMetrics.targets.weekly} 
+              icon="fa-calendar-week" 
+              color="blue" 
+          />
+          <GoalCard 
+              title="Tháng này" 
+              actual={salesMetrics.actual.month} 
+              target={salesMetrics.targets.monthly} 
+              icon="fa-calendar-alt" 
+              color="green" 
+          />
+          <GoalCard 
+              title="Quý này" 
+              actual={salesMetrics.actual.quarter} 
+              target={salesMetrics.targets.quarterly} 
+              icon="fa-chart-pie" 
+              color="orange" 
+          />
+          <GoalCard 
+              title="Năm nay" 
+              actual={salesMetrics.actual.year} 
+              target={salesMetrics.targets.yearly} 
+              icon="fa-trophy" 
+              color="red" 
+          />
       </div>
 
+      {/* 2. MAIN LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* LEFT COL: ACTION CENTER */}
         <div className="lg:col-span-2 bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col min-h-[500px] transition-colors">
             <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 pt-4">
                 <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500'}`}>
@@ -247,18 +288,27 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
                                 </div>
                             ))
                         ) : (
-                            <p className="text-center py-10 text-gray-400">Không có việc khẩn cấp.</p>
+                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                <i className="fas fa-clipboard-check text-4xl mb-2 opacity-50"></i>
+                                <p>Tuyệt vời! Bạn đã hoàn thành mọi việc.</p>
+                            </div>
                         )}
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 gap-4 h-full">
                          {['Tiềm năng', 'Đang tư vấn', 'Đã tham gia'].map(title => (
-                             <div key={title} className="bg-gray-50 dark:bg-pru-dark/30 rounded-xl p-3">
-                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</span>
-                                 <div className="mt-3 space-y-2">
-                                     {customers.filter(c => c.status.includes(title)).slice(0, 3).map(c => (
-                                         <div key={c.id} className="bg-white dark:bg-pru-card p-2 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm text-xs dark:text-gray-300">{c.fullName}</div>
+                             <div key={title} className="bg-gray-50 dark:bg-pru-dark/30 rounded-xl p-3 flex flex-col">
+                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">{title}</span>
+                                 <div className="flex-1 space-y-2 overflow-y-auto max-h-[300px]">
+                                     {customers.filter(c => c.status.includes(title)).map(c => (
+                                         <div key={c.id} className="bg-white dark:bg-pru-card p-3 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm text-xs dark:text-gray-300">
+                                             <div className="font-bold">{c.fullName}</div>
+                                             {c.analysis?.readiness === ReadinessLevel.HOT && <div className="text-[10px] text-orange-500 font-bold mt-1"><i className="fas fa-fire"></i> HOT</div>}
+                                         </div>
                                      ))}
+                                     {customers.filter(c => c.status.includes(title)).length === 0 && (
+                                         <p className="text-center text-xs text-gray-400 italic mt-4">Trống</p>
+                                     )}
                                  </div>
                              </div>
                          ))}
@@ -267,14 +317,18 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
             </div>
         </div>
 
+        {/* RIGHT COL: CHART */}
         <div className="space-y-6">
             <div className="bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 transition-colors">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-4 text-sm">Doanh thu (Triệu)</h3>
-                <div style={{ width: '100%', height: 200 }}> 
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-4 text-sm">Biểu đồ Doanh thu (Triệu)</h3>
+                <div style={{ width: '100%', height: 250 }}> 
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData}>
                             <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} stroke="#9ca3af" />
-                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{fontSize: '12px', borderRadius: '8px', border: 'none'}} />
+                            <Tooltip 
+                                cursor={{fill: 'transparent'}} 
+                                contentStyle={{fontSize: '12px', borderRadius: '8px', border: 'none', backgroundColor: '#1e1e1e', color: '#fff'}} 
+                            />
                             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                                 {chartData.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#ed1b2e' : '#cbd5e1'} />
@@ -290,16 +344,59 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
   );
 };
 
-const MetricCard: React.FC<{title: string, value: string | number, icon: string, color: string, bg: string}> = ({title, value, icon, color, bg}) => (
-    <div className="bg-white dark:bg-pru-card p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col justify-between transition-colors">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${bg} ${color}`}>
-            <i className={`fas ${icon}`}></i>
+// --- HELPER COMPONENT FOR GOAL CARD ---
+const GoalCard: React.FC<{title: string, actual: number, target: number, icon: string, color: string}> = ({title, actual, target, icon, color}) => {
+    const progress = target > 0 ? Math.min((actual / target) * 100, 100) : 0;
+    // Format to nearest million integer (e.g. 27.35 -> 27)
+    const formatMoney = (n: number) => Math.round(n / 1000000).toLocaleString('vi-VN'); 
+
+    // Color Mapping
+    const colorClasses: Record<string, string> = {
+        blue: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30',
+        green: 'text-green-600 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border-green-100 dark:border-green-900/30',
+        orange: 'text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400 border-orange-100 dark:border-orange-900/30',
+        red: 'text-pru-red bg-red-50 dark:bg-red-900/20 dark:text-red-400 border-red-100 dark:border-red-900/30'
+    };
+
+    const barColors: Record<string, string> = {
+        blue: 'bg-blue-500',
+        green: 'bg-green-500',
+        orange: 'bg-orange-500',
+        red: 'bg-pru-red'
+    };
+
+    return (
+        <div className="bg-white dark:bg-pru-card p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
+            <div className="flex justify-between items-start mb-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${colorClasses[color]}`}>
+                    <i className={`fas ${icon}`}></i>
+                </div>
+                <div className="text-right">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{title}</p>
+                    {target > 0 ? (
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                            Mục tiêu: {formatMoney(target)}
+                        </p>
+                    ) : (
+                        <p className="text-[10px] text-gray-400 italic">Chưa đặt MT</p>
+                    )}
+                </div>
+            </div>
+            
+            <div className="mb-2">
+                <span className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoney(actual)}</span>
+                <span className="text-xs text-gray-500 ml-1">Tr</span>
+            </div>
+
+            <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div 
+                    className={`h-full rounded-full transition-all duration-1000 ${barColors[color]}`}
+                    style={{ width: `${progress}%` }}
+                ></div>
+            </div>
+            <p className="text-right text-[10px] font-bold text-gray-400 mt-1">{progress.toFixed(0)}%</p>
         </div>
-        <div>
-            <p className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider">{title}</p>
-            <p className="text-xl font-bold text-gray-800 dark:text-gray-100 mt-0.5">{value}</p>
-        </div>
-    </div>
-);
+    );
+};
 
 export default Dashboard;

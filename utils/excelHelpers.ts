@@ -1,5 +1,6 @@
+
 import * as XLSX from 'xlsx';
-import { Customer, Contract, Gender, CustomerStatus, FinancialStatus, PersonalityType, ReadinessLevel, ContractStatus, PaymentFrequency } from '../types';
+import { Customer, Contract, Gender, CustomerStatus, FinancialStatus, PersonalityType, ReadinessLevel, ContractStatus, PaymentFrequency, Product, ProductType, ContractProduct } from '../types';
 
 // --- HELPERS ---
 
@@ -22,15 +23,31 @@ const parseDate = (dateStr: any): string => {
     return '';
 };
 
-const normalizeString = (str: string) => {
-    return str ? str.toString().trim() : '';
+const normalizeString = (str: any) => {
+    return str ? String(str).trim() : '';
 };
 
 const normalizeGender = (str: string): Gender => {
-    const s = str.toLowerCase();
-    if (s.includes('nam') || s.includes('male')) return Gender.MALE;
-    if (s.includes('nữ') || s.includes('nu') || s.includes('female')) return Gender.FEMALE;
+    const s = normalizeString(str).toLowerCase();
+    if (s.includes('nam') || s.includes('male') || s === 'm') return Gender.MALE;
+    if (s.includes('nữ') || s.includes('nu') || s.includes('female') || s === 'f') return Gender.FEMALE;
     return Gender.OTHER;
+};
+
+// Helper to match Product Name from Excel to System Product ID
+const findProductIdByName = (excelName: string, systemProducts: Product[]): string => {
+    if (!excelName) return 'imported_unknown';
+    const normalizedExcel = excelName.toLowerCase().replace(/\s+/g, '');
+    
+    // 1. Try Exact Match
+    const exact = systemProducts.find(p => p.name.toLowerCase().replace(/\s+/g, '') === normalizedExcel);
+    if (exact) return exact.id;
+
+    // 2. Try Partial Match (Contains)
+    const partial = systemProducts.find(p => p.name.toLowerCase().includes(normalizedExcel) || normalizedExcel.includes(p.name.toLowerCase().replace(/\s+/g, '')));
+    if (partial) return partial.id;
+
+    return 'imported_unknown'; // Keep unknown if not found
 };
 
 // --- EXPORTERS (TEMPLATE) ---
@@ -41,13 +58,34 @@ export const downloadTemplate = (type: 'customer' | 'contract') => {
     let filename = '';
 
     if (type === 'customer') {
-        headers = ['Họ và tên', 'Số điện thoại', 'Ngày sinh (DD/MM/YYYY)', 'Giới tính', 'CCCD', 'Nghề nghiệp', 'Địa chỉ', 'Thu nhập (Triệu)', 'Ghi chú'];
-        example = ['Nguyễn Văn A', '0909123456', '20/05/1990', 'Nam', '079090000123', 'Nhân viên VP', 'TP.HCM', '20', 'Khách tiềm năng'];
-        filename = 'Mau_Import_Khach_Hang.xlsx';
+        headers = [
+            'Họ và tên *', 'Số điện thoại *', 'Ngày sinh (DD/MM/YYYY)', 'Giới tính', 'CCCD', 
+            'Nghề nghiệp', 'Địa chỉ', 'Thu nhập (Triệu)', 'Số con', 'Chiều cao (cm)', 'Cân nặng (kg)', 
+            'Tiền sử bệnh', 'Ghi chú'
+        ];
+        example = [
+            'Nguyễn Văn A', '0909123456', '20/05/1990', 'Nam', '079090000123', 
+            'Nhân viên VP', 'TP.HCM', '20', '2', '170', '65', 
+            'Không', 'Khách tiềm năng'
+        ];
+        filename = 'Mau_Import_Khach_Hang_Chi_Tiet.xlsx';
     } else {
-        headers = ['Số Hợp Đồng', 'SĐT Khách Hàng', 'Tên Khách Hàng', 'Ngày hiệu lực', 'Ngày đóng phí tới', 'Tổng phí (VNĐ)', 'Định kỳ (Năm/Quý)', 'Tên Sản Phẩm Chính', 'Mệnh giá Chính', 'Trạng thái'];
-        example = ['76543210', '0909123456', 'Nguyễn Văn A', '01/01/2023', '01/01/2024', '20000000', 'Năm', 'PRU-Chủ Động Cuộc Sống', '1000000000', 'Đang hiệu lực'];
-        filename = 'Mau_Import_Hop_Dong.xlsx';
+        headers = [
+            'Số Hợp Đồng *', 'SĐT Khách Hàng *', 'Loại (Chính/Bổ trợ)', 'Tên Sản Phẩm', 'Mệnh giá / Gói', 
+            'Phí (VNĐ)', 'Ngày hiệu lực', 'Ngày đóng phí tới', 'Định kỳ (Năm/Quý)', 'Trạng thái'
+        ];
+        // Example shows Multi-row structure for Riders
+        const exampleData = [
+            ['76543210', '0909123456', 'Chính', 'PRU-Đầu Tư Vững Tiến', '1000000000', '20000000', '01/01/2023', '01/01/2024', 'Năm', 'Đang hiệu lực'],
+            ['76543210', '0909123456', 'Bổ trợ', 'Bảo hiểm Tai nạn', '500000000', '2000000', '01/01/2023', '01/01/2024', 'Năm', 'Đang hiệu lực'],
+            ['76543210', '0909123456', 'Bổ trợ', 'Chăm sóc sức khỏe', 'Toàn diện', '4500000', '01/01/2023', '01/01/2024', 'Năm', 'Đang hiệu lực']
+        ];
+        
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...exampleData]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        XLSX.writeFile(wb, 'Mau_Import_Hop_Dong_Chi_Tiet.xlsx');
+        return;
     }
 
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
@@ -72,15 +110,11 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
     const existingPhones = new Set(existingCustomers.map(c => c.phone.replace(/\D/g, '')));
 
     data.slice(1).forEach((row: any[], index) => {
-        // Excel Row Index (Header is 0, First Data is 1. Display as Row 2, 3...)
         const rowIndex = index + 2; 
         
         const fullName = normalizeString(row[0]);
-        const phone = normalizeString(row[1]).replace(/\D/g, ''); // Remove non-digits
-        const dobRaw = row[2];
-        const genderRaw = normalizeString(row[3]);
+        const phone = normalizeString(row[1]).replace(/\D/g, ''); 
         
-        // 1. Validation Rules
         if (!fullName) {
             invalid.push({ row: rowIndex, data: row, error: "Thiếu tên khách hàng" });
             return;
@@ -90,26 +124,43 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
             return;
         }
         if (existingPhones.has(phone)) {
-            invalid.push({ row: rowIndex, data: row, error: "SĐT đã tồn tại trong hệ thống" });
+            invalid.push({ row: rowIndex, data: row, error: "SĐT đã tồn tại" });
             return;
         }
 
-        // 2. Data Construction
+        // Expanded Data Mapping
+        const dob = parseDate(row[2]);
+        const gender = normalizeGender(row[3]);
+        const idCard = normalizeString(row[4]);
+        const job = normalizeString(row[5]);
+        const address = normalizeString(row[6]);
+        const income = normalizeString(row[7]);
+        const children = Number(row[8]) || 0;
+        const height = Number(row[9]) || 0;
+        const weight = Number(row[10]) || 0;
+        const history = normalizeString(row[11]);
+        const note = normalizeString(row[12]);
+
         const customer: Customer = {
-            id: '', // Will be assigned by Firebase
+            id: '', 
             fullName: fullName,
             phone: phone,
-            dob: parseDate(dobRaw),
-            gender: normalizeGender(genderRaw),
-            idCard: normalizeString(row[4]),
-            job: normalizeString(row[5]),
-            companyAddress: normalizeString(row[6]),
+            dob: dob,
+            gender: gender,
+            idCard: idCard,
+            job: job,
+            companyAddress: address,
             status: CustomerStatus.POTENTIAL,
-            interactionHistory: [`Import từ Excel ngày ${new Date().toLocaleDateString('vi-VN')}`],
-            health: { medicalHistory: '', height: 0, weight: 0, habits: '' },
+            interactionHistory: [`Import Excel: ${new Date().toLocaleDateString('vi-VN')}`],
+            health: { 
+                medicalHistory: history, 
+                height: height, 
+                weight: weight, 
+                habits: '' 
+            },
             analysis: {
-                childrenCount: 0,
-                incomeEstimate: row[7] ? `${row[7]} triệu` : '',
+                childrenCount: children,
+                incomeEstimate: income ? `${income} triệu` : '',
                 financialStatus: FinancialStatus.STABLE,
                 insuranceKnowledge: '',
                 previousExperience: '',
@@ -119,76 +170,127 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
             }
         };
 
-        if (row[8]) customer.interactionHistory.push(row[8]); // Note
+        if (note) customer.interactionHistory.push(note);
 
         valid.push(customer);
-        // Add to temp set to prevent duplicates within the same file
         existingPhones.add(phone); 
     });
 
     return { valid, invalid };
 };
 
-export const processContractImport = async (file: File, existingContracts: Contract[], customers: Customer[]): Promise<ImportResult<Contract>> => {
+export const processContractImport = async (
+    file: File, 
+    existingContracts: Contract[], 
+    customers: Customer[],
+    systemProducts: Product[] // New param to match IDs
+): Promise<ImportResult<Contract>> => {
     const data = await readExcelFile(file);
     const valid: Contract[] = [];
     const invalid: any[] = [];
     
-    const existingNumbers = new Set(existingContracts.map(c => c.contractNumber));
-    // Create Map for Phone -> CustomerID lookup
+    // Group rows by Contract Number
+    const contractGroups = new Map<string, any[]>();
+    
+    data.slice(1).forEach((row: any[], index) => {
+        const contractNumber = normalizeString(row[0]);
+        if (!contractNumber) return; // Skip empty rows
+        
+        if (!contractGroups.has(contractNumber)) {
+            contractGroups.set(contractNumber, []);
+        }
+        contractGroups.get(contractNumber)?.push({ row, rowIndex: index + 2 });
+    });
+
+    // Lookup Map for Customer ID
     const customerMap = new Map<string, string>();
     customers.forEach(c => customerMap.set(c.phone.replace(/\D/g, ''), c.id));
+    const existingNumbers = new Set(existingContracts.map(c => c.contractNumber));
 
-    data.slice(1).forEach((row: any[], index) => {
-        const rowIndex = index + 2;
-        
-        const contractNumber = normalizeString(row[0]);
-        const customerPhone = normalizeString(row[1]).replace(/\D/g, '');
-        const effectiveDate = parseDate(row[3]);
-        const nextPaymentDate = parseDate(row[4]);
-        const totalFee = Number(row[5]) || 0;
-        
-        // 1. Validation
-        if (!contractNumber) {
-            invalid.push({ row: rowIndex, data: row, error: "Thiếu số HĐ" });
-            return;
-        }
+    // Process each group as ONE contract
+    for (const [contractNumber, rows] of contractGroups) {
+        // Validation 1: Check Existence
         if (existingNumbers.has(contractNumber)) {
-            invalid.push({ row: rowIndex, data: row, error: "Số HĐ đã tồn tại" });
-            return;
-        }
-        if (!customerMap.has(customerPhone)) {
-             invalid.push({ row: rowIndex, data: row, error: `Không tìm thấy KH có SĐT ${customerPhone}` });
-             return;
+            rows.forEach(r => invalid.push({ row: r.rowIndex, data: r.row, error: "Số HĐ đã tồn tại" }));
+            continue;
         }
 
-        // 2. Data Construction
+        // Find Main Product Row (First row marked as 'Chính' or just the first row if unspecified)
+        let mainRow = rows.find(r => normalizeString(r.row[2]).toLowerCase().includes('chính'));
+        if (!mainRow) mainRow = rows[0]; // Fallback to first row
+
+        const customerPhone = normalizeString(mainRow.row[1]).replace(/\D/g, '');
+        if (!customerMap.has(customerPhone)) {
+            rows.forEach(r => invalid.push({ row: r.rowIndex, data: r.row, error: `Không tìm thấy KH có SĐT ${customerPhone}` }));
+            continue;
+        }
+
         const customerId = customerMap.get(customerPhone)!;
         const customerName = customers.find(c => c.id === customerId)?.fullName || '';
+
+        // Construct Main Product
+        const mainProductName = normalizeString(mainRow.row[3]);
+        const mainProductId = findProductIdByName(mainProductName, systemProducts);
+        const mainSA = Number(mainRow.row[4]) || 0; // If text (Plan), result is NaN -> 0
+        
+        // Handle "Plan" in Sum Assured column for Health Cards if designated as Main (rare but possible)
+        const mainPlan = isNaN(Number(mainRow.row[4])) ? mainRow.row[4] : undefined; 
+
+        // Riders Construction
+        const riders: ContractProduct[] = [];
+        let totalFee = 0;
+
+        rows.forEach(r => {
+            const type = normalizeString(r.row[2]).toLowerCase();
+            const pName = normalizeString(r.row[3]);
+            const pVal = r.row[4]; // Can be number (SA) or string (Plan)
+            const fee = Number(r.row[5]) || 0;
+            
+            totalFee += fee;
+
+            // If it's NOT the exact same row object as mainRow, treat as Rider
+            // OR if explicitly marked as 'Bổ trợ'
+            if (r !== mainRow || type.includes('bổ trợ') || type.includes('rider')) {
+                const rId = findProductIdByName(pName, systemProducts);
+                const isPlan = isNaN(Number(pVal));
+                
+                riders.push({
+                    productId: rId,
+                    productName: pName,
+                    insuredName: customerName, // Default to owner, user can edit later
+                    sumAssured: isPlan ? 0 : Number(pVal),
+                    fee: fee,
+                    attributes: isPlan ? { plan: pVal } : {}
+                });
+            }
+        });
+
+        // Ensure Main Product Fee is set correctly
+        const mainFee = Number(mainRow.row[5]) || 0;
 
         const contract: Contract = {
             id: '', 
             contractNumber: contractNumber,
             customerId: customerId,
-            effectiveDate: effectiveDate,
-            nextPaymentDate: nextPaymentDate,
-            totalFee: totalFee,
-            paymentFrequency: normalizeString(row[6]) === 'Quý' ? PaymentFrequency.QUARTERLY : PaymentFrequency.ANNUAL,
-            status: normalizeString(row[9]) === 'Mất hiệu lực' ? ContractStatus.LAPSED : ContractStatus.ACTIVE,
+            effectiveDate: parseDate(mainRow.row[6]),
+            nextPaymentDate: parseDate(mainRow.row[7]),
+            totalFee: totalFee, // Sum of all fees
+            paymentFrequency: normalizeString(mainRow.row[8]) === 'Quý' ? PaymentFrequency.QUARTERLY : PaymentFrequency.ANNUAL,
+            status: normalizeString(mainRow.row[9]) === 'Mất hiệu lực' ? ContractStatus.LAPSED : ContractStatus.ACTIVE,
             mainProduct: {
-                productId: 'imported', // Placeholder
-                productName: normalizeString(row[7]) || 'Sản phẩm BHNT',
-                insuredName: customerName, // Default to owner
-                fee: totalFee,
-                sumAssured: Number(row[8]) || 0
+                productId: mainProductId,
+                productName: mainProductName,
+                insuredName: customerName,
+                fee: mainFee,
+                sumAssured: isNaN(mainSA) ? 0 : mainSA,
+                attributes: mainPlan ? { plan: mainPlan } : {}
             },
-            riders: [], // Excel simple import doesn't support complex riders yet
+            riders: riders,
             beneficiary: '',
         };
 
         valid.push(contract);
-        existingNumbers.add(contractNumber);
-    });
+    }
 
     return { valid, invalid };
 };

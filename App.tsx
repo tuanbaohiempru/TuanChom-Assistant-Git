@@ -12,7 +12,7 @@ import MessageTemplatesPage from './pages/MessageTemplates';
 import SettingsPage from './pages/Settings';
 import AdvisoryPage from './pages/Advisory';
 import MarketingPage from './pages/Marketing';
-import ProductAdvisoryPage from './pages/ProductAdvisory'; // New
+import ProductAdvisoryPage from './pages/ProductAdvisory';
 
 import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile, Illustration, ContractStatus, PaymentFrequency } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
@@ -32,6 +32,9 @@ const App: React.FC = () => {
         return localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
     });
 
+    // AI Chat State moved here
+    const [isChatOpen, setIsChatOpen] = useState(false);
+
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark');
@@ -44,7 +47,6 @@ const App: React.FC = () => {
 
     const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
-    // --- REALTIME DATABASE SUBSCRIPTIONS ---
     useEffect(() => {
         const unsubs = [
             subscribeToCollection(COLLECTIONS.CUSTOMERS, (data) => setState(prev => ({ ...prev, customers: data }))),
@@ -52,7 +54,7 @@ const App: React.FC = () => {
             subscribeToCollection(COLLECTIONS.CONTRACTS, (data) => setState(prev => ({ ...prev, contracts: data }))),
             subscribeToCollection(COLLECTIONS.APPOINTMENTS, (data) => setState(prev => ({ ...prev, appointments: data }))),
             subscribeToCollection(COLLECTIONS.MESSAGE_TEMPLATES, (data) => setState(prev => ({ ...prev, messageTemplates: data }))),
-            subscribeToCollection(COLLECTIONS.ILLUSTRATIONS, (data) => setState(prev => ({ ...prev, illustrations: data }))), // New
+            subscribeToCollection(COLLECTIONS.ILLUSTRATIONS, (data) => setState(prev => ({ ...prev, illustrations: data }))),
             subscribeToCollection(COLLECTIONS.SETTINGS, (data) => {
                 if (data && data.length > 0) setState(prev => ({ ...prev, agentProfile: data[0] as AgentProfile }));
             })
@@ -60,7 +62,6 @@ const App: React.FC = () => {
         return () => unsubs.forEach(unsub => unsub());
     }, []);
 
-    // CRUD Handlers
     const addCustomer = async (c: Customer) => await addData(COLLECTIONS.CUSTOMERS, c);
     const updateCustomer = async (c: Customer) => await updateData(COLLECTIONS.CUSTOMERS, c.id, c);
     const deleteCustomer = async (id: string) => await deleteData(COLLECTIONS.CUSTOMERS, id);
@@ -84,7 +85,6 @@ const App: React.FC = () => {
     const saveIllustration = async (ill: Illustration) => await addData(COLLECTIONS.ILLUSTRATIONS, ill);
     const deleteIllustration = async (id: string) => await deleteData(COLLECTIONS.ILLUSTRATIONS, id);
     
-    // Convert Illustration to Contract
     const convertIllustration = async (ill: Illustration, customerId: string) => {
         const newContract: Contract = {
             id: '',
@@ -114,7 +114,7 @@ const App: React.FC = () => {
 
     return (
         <Router>
-            <Layout>
+            <Layout onToggleChat={() => setIsChatOpen(!isChatOpen)}>
                 <Routes>
                     <Route path="/" element={<Dashboard state={state} onUpdateContract={updateContract} />} />
                     <Route path="/customers" element={
@@ -142,11 +142,11 @@ const App: React.FC = () => {
                     <Route path="/marketing" element={<MarketingPage profile={state.agentProfile} />} />
                     <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
                     <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
-                    <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} />} />
+                    <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} onUpdateCustomer={updateCustomer} />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Layout>
-            <AIChat state={state} />
+            <AIChat state={state} isOpen={isChatOpen} setIsOpen={setIsChatOpen} />
         </Router>
     );
 };

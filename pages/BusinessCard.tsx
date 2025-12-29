@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { AgentProfile } from '../types';
@@ -142,7 +143,7 @@ END:VCARD`;
             </div>
             
             <div className="mt-4 text-xs text-gray-400 text-center">
-                PruMate Digital Card System <br/>
+                TuanChom Digital Card System <br/>
                 Designed for Professional Agents
             </div>
         </div>

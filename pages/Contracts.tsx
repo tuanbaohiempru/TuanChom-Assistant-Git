@@ -744,7 +744,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             
             <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa hợp đồng?" message={`Bạn có chắc muốn xóa HĐ ${deleteConfirm.name}?`} onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({isOpen: false, id: '', name: ''})} />
 
-            <ExcelImportModal<Contract> isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Nhập Hợp Đồng từ Excel" onDownloadTemplate={() => downloadTemplate('contract')} onProcessFile={(file) => processContractImport(file, contracts, customers)} onSave={handleBatchSave} />
+            <ExcelImportModal<Contract> isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Nhập Hợp Đồng từ Excel" onDownloadTemplate={() => downloadTemplate('contract')} onProcessFile={(file) => processContractImport(file, contracts, customers, products)} onSave={handleBatchSave} />
 
             <style>{`
                 .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; background-color: #fff; color: #111827; }

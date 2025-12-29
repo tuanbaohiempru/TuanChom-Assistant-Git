@@ -1,8 +1,57 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { AppState, Customer, AgentProfile, Contract, ProductStatus } from "../types";
+import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, FinancialGoal } from "../types";
 
-// Helper to sanitize data for AI context (remove unnecessary UI fields if any)
+// ... (keep existing imports and functions: prepareContext, chatWithData, extractTextFromPdf, consultantChat, getObjectionSuggestions, etc.)
+
+// KEEP ALL EXISTING CODE ABOVE THIS LINE...
+
+/**
+ * NEW: Generate short financial advice based on calculation results
+ */
+export const generateFinancialAdvice = async (
+    customerName: string,
+    planResult: PlanResult
+): Promise<string> => {
+    try {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) return "Lỗi: Chưa cấu hình API Key.";
+
+        const ai = new GoogleGenAI({ apiKey });
+
+        const prompt = `
+            Bạn là Chuyên gia Tài chính Prudential.
+            Hãy đưa ra nhận xét và lời khuyên ngắn gọn (khoảng 3 câu) cho khách hàng ${customerName} dựa trên kết quả hoạch định sau:
+            
+            - Mục tiêu: ${planResult.goal}
+            - Cần có: ${planResult.requiredAmount.toLocaleString()} VNĐ
+            - Đã có (dự kiến): ${planResult.currentAmount.toLocaleString()} VNĐ
+            - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()} VNĐ
+            
+            Yêu cầu:
+            1. Giọng văn chuyên nghiệp, đồng cảm nhưng cảnh tỉnh.
+            2. Nếu thiếu hụt lớn: Nhấn mạnh rủi ro lạm phát hoặc chi phí y tế/giáo dục tăng cao.
+            3. Kêu gọi hành động nhẹ nhàng (Start saving now).
+            4. Không dùng bảng, chỉ dùng text đoạn văn.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt
+        });
+
+        return response.text || "Hãy xem xét lại kế hoạch tài chính để đảm bảo mục tiêu.";
+
+    } catch (error) {
+        console.error("Financial Advice Error:", error);
+        return "Hiện chưa thể tạo lời khuyên tự động.";
+    }
+};
+
+// ... (keep existing functions: generateSocialPost, generateContentSeries, generateStory, etc.)
+// Make sure to preserve all other exports!
+// RENDER THE FULL FILE CONTENT TO BE SAFE:
+
 const prepareContext = (state: AppState) => {
   return JSON.stringify({
     customers: state.customers.map(c => ({
@@ -37,7 +86,7 @@ const prepareContext = (state: AppState) => {
     products: state.products.map(p => ({
       name: p.name,
       type: p.type,
-      status: p.status, // Include Status here
+      status: p.status, 
       description: p.description,
       rules: p.rulesAndTerms,
     })),
@@ -60,7 +109,7 @@ export const chatWithData = async (
     const contextData = prepareContext(appState);
     
     const systemInstruction = `
-      Bạn là PruMate, trợ lý AI cao cấp của Prudential.
+      Bạn là TuanChom, trợ lý AI cao cấp của Prudential.
 
       DỮ LIỆU CỦA BẠN (JSON):
       ${contextData}
@@ -70,16 +119,15 @@ export const chatWithData = async (
       - Tuyệt đối **KHÔNG ĐỀ XUẤT** hoặc khuyên khách hàng mua các sản phẩm có trạng thái "${ProductStatus.INACTIVE}" (Ngưng bán). 
       - Nếu khách hàng hỏi về một sản phẩm "Ngưng bán", hãy trả lời thông tin chi tiết về nó (để phục vụ khách hàng cũ) nhưng KHÔNG gợi ý mua mới.
 
-      QUY TẮC TRÌNH BÀY:
-      1. **Cấu trúc**: Sử dụng Markdown.
-         - Dùng tiêu đề cấp 3 (### ) cho các mục chính.
-         - Dùng danh sách gạch đầu dòng (- ) cho các ý liệt kê.
-      2. **TUYỆT ĐỐI KHÔNG DÙNG BẢNG (TABLE)**. Thay vào đó, hãy trình bày dạng danh sách dọc để dễ đọc trên điện thoại.
-      3. **Số liệu**: 
-         - Luôn định dạng tiền tệ kèm chữ "đ" ở cuối (VD: 20.000.000 đ).
-         - Ngày tháng ghi rõ ràng (DD/MM/YYYY).
-         - Tô đậm các con số quan trọng (VD: **20.000.000 đ**).
-      4. **Trạng thái**: Ghi chính xác trạng thái (VD: "Đang hiệu lực", "Mất hiệu lực") để hệ thống tự tô màu.
+      QUY TẮC TRÌNH BÀY (MOBILE-FIRST):
+      1. **TUYỆT ĐỐI KHÔNG DÙNG BẢNG (NO MARKDOWN TABLES)**: Giao diện chat điện thoại sẽ bị vỡ. Hãy trình bày dữ liệu dưới dạng danh sách gạch đầu dòng (-).
+      2. **HẠN CHẾ EMOJI**: Giữ phong cách chuyên nghiệp, sạch sẽ.
+      3. **Cấu trúc**: 
+         - Tiêu đề dùng in đậm (**Tiêu đề**).
+         - Các ý dùng gạch đầu dòng (- ).
+      4. **Số liệu**: 
+         - Luôn định dạng tiền tệ kèm chữ "đ" (VD: 20.000.000 đ).
+         - Tô đậm các con số quan trọng.
       
       NHIỆM VỤ:
       - Trả lời ngắn gọn, đúng trọng tâm.
@@ -153,9 +201,6 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
   }
 };
 
-/**
- * Creates a specialized Advisory Roleplay Chat
- */
 export const consultantChat = async (
     query: string,
     customer: Customer,
@@ -164,7 +209,9 @@ export const consultantChat = async (
     agentProfile: AgentProfile | null,
     conversationGoal: string,
     history: { role: 'user' | 'model'; parts: { text: string }[] }[],
-    tone: string = 'professional' // New Parameter: 'professional' | 'friendly' | 'direct'
+    roleplayMode: 'consultant' | 'customer' = 'consultant',
+    planResult: PlanResult | null = null,
+    chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
     try {
         const apiKey = process.env.API_KEY;
@@ -172,153 +219,163 @@ export const consultantChat = async (
 
         const ai = new GoogleGenAI({ apiKey });
         
-        const customerProfile = JSON.stringify({
-            name: customer.fullName,
-            age: new Date().getFullYear() - new Date(customer.dob).getFullYear(),
-            job: customer.job,
-            health: customer.health,
-            children: customer.analysis?.childrenCount || 0,
-            income: customer.analysis?.incomeEstimate || 'Chưa rõ',
-            financialStatus: customer.analysis?.financialStatus,
-            knowledge: customer.analysis?.insuranceKnowledge,
-            concerns: customer.analysis?.keyConcerns,
-            personality: customer.analysis?.personality,
-            readiness: customer.analysis?.readiness,
-            history: customer.interactionHistory
-        });
+        const customerProfile = `
+            KHÁCH HÀNG: ${customer.fullName}
+            TUỔI: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}
+            NGHỀ NGHIỆP: ${customer.job}
+            TÌNH TRẠNG: ${customer.analysis?.financialStatus}
+            TÍNH CÁCH: ${customer.analysis?.personality}
+            MỐI QUAN TÂM: ${customer.analysis?.keyConcerns}
+        `;
 
-        const contractsContext = contracts.length > 0
-            ? JSON.stringify(contracts.map(c => ({
-                number: c.contractNumber,
-                status: c.status,
-                effectiveDate: c.effectiveDate,
-                nextPayment: c.nextPaymentDate,
-                mainProduct: {
-                    name: c.mainProduct.productName,
-                    sumAssured: c.mainProduct.sumAssured,
-                    fee: c.mainProduct.fee
-                },
-                riders: c.riders.map(r => ({
-                    name: r.productName,
-                    sumAssured: r.sumAssured,
-                    fee: r.fee
-                })),
-                totalFee: c.totalFee
-            })))
-            : "Khách hàng CHƯA có hợp đồng nào tại Prudential.";
+        const financialContext = planResult ? `
+            DỮ LIỆU TÀI CHÍNH:
+            - Mục tiêu: ${planResult.goal}
+            - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()} VNĐ
+        ` : "";
 
-        const familyData = familyContext.length > 0
-            ? JSON.stringify(familyContext)
-            : "Chưa có thông tin chi tiết về người thân.";
-
-        const agentContext = agentProfile ? `
-            THÔNG TIN VỀ BẠN (CỐ VẤN):
-            - Họ tên: ${agentProfile.fullName}
-            - Tuổi: ${agentProfile.age}
-            - Chức danh/Danh hiệu: ${agentProfile.title}
-            - Mã số: ${agentProfile.agentCode}
-            - Văn phòng: ${agentProfile.office}
-            - Giới thiệu bản thân: ${agentProfile.bio}
-            -> Hãy sử dụng phong thái và thông tin này khi xưng hô hoặc giới thiệu nếu cần thiết.
-        ` : 'Bạn là một Cố vấn Prudential chuyên nghiệp (Hãy tự xưng là Cố vấn).';
-
-        // --- DYNAMIC PERSONA DEFINITION (UPDATED: NO 'TÔI') ---
-        let personaInstruction = "";
-        
-        if (tone === 'friendly') {
-            personaInstruction = `
-            PHONG CÁCH: THÂN THIẾT, BẠN BÈ, GẦN GŨI.
-            - Xưng hô: "Mình" - "Bạn/Cậu", hoặc xưng Tên (ví dụ: "Ngân thấy là...", "Hùng nghĩ là...").
-            - Tuyệt đối KHÔNG xưng "Tôi".
-            - Không dùng kính ngữ sáo rỗng (Dạ/Thưa) trừ khi khách hàng lớn tuổi hơn hẳn.
-            - Cách nói: Thoải mái, dùng từ ngữ đời thường, icon vui vẻ.
-            - Mục tiêu: Tâm tình như hai người bạn thân, chia sẻ lo lắng chứ không dạy đời.
-            `;
-        } else if (tone === 'direct') {
-            personaInstruction = `
-            PHONG CÁCH: SẮC SẢO, CHUYÊN GIA, QUYẾT ĐOÁN.
-            - Xưng hô: "Em" - "Anh/Chị". (Giữ sự tôn trọng tối thiểu của dịch vụ).
-            - Tuyệt đối KHÔNG xưng "Tôi".
-            - KHÔNG DÙNG từ đệm thừa thãi (Bỏ: "Dạ vâng", "Thưa anh", "Xin phép").
-            - Cách nói: Dùng câu khẳng định mạnh, ngắn gọn. Đi thẳng vào CON SỐ, LỢI ÍCH, và RỦI RO.
-            - Ví dụ: Thay vì "Dạ em nghĩ anh nên mua..." hãy nói "Anh cần bảo vệ nguồn thu nhập này ngay vì rủi ro là..."
-            - Mục tiêu: Thể hiện năng lực chuyên môn cao, giúp khách hàng (nhóm D) ra quyết định nhanh.
+        let styleInstruction = "";
+        if (chatStyle === 'zalo') {
+            styleInstruction = `
+            PHONG CÁCH GIAO TIẾP: BẠN BÈ / THÂN MẬT (Casual Zalo)
+            1. **Cực ngắn**: Mỗi ý chỉ 1-2 câu.
+            2. **Tự nhiên**: Xưng hô Em - Anh/Chị (hoặc Bạn/Mình). Bỏ qua các từ sáo rỗng.
+            3. **HẠN CHẾ EMOJI**: Chỉ sử dụng tối đa 1-2 emoji ở cuối tin nhắn nếu cần thiết để thể hiện cảm xúc. KHÔNG chèn icon vào giữa câu gây rối mắt.
+            4. **Trực diện**: Đi thẳng vào lợi ích.
+            5. **HIỂN THỊ**: TUYỆT ĐỐI KHÔNG DÙNG BẢNG (TABLE).
             `;
         } else {
-            // Default: Professional
-            personaInstruction = `
-            PHONG CÁCH: CHUYÊN NGHIỆP, LỊCH SỰ, TẬN TÂM (MẶC ĐỊNH).
-            - Xưng hô: "Em" - "Anh/Chị".
-            - Tuyệt đối KHÔNG xưng "Tôi".
-            - Dùng đầy đủ kính ngữ: Dạ, Thưa, Ạ ở đầu/cuối câu.
-            - Cách nói: Nhẹ nhàng, thấu hiểu, "thủ thỉ" tâm tình.
-            - Mục tiêu: Xây dựng niềm tin, tạo cảm giác an tâm và được phục vụ chu đáo.
+            styleInstruction = `
+            PHONG CÁCH GIAO TIẾP: TƯ VẤN VIÊN CHUYÊN NGHIỆP (Professional Chat)
+            1. **Chuyên nghiệp & Lịch sự**: Dùng từ ngữ chuẩn mực, xưng hô Dạ/Thưa/Em - Anh/Chị. 
+            2. **Súc tích & Dễ đọc**: Trả lời ngắn gọn, gãy gọn.
+            3. **KHÔNG SPAM EMOJI**: TUYỆT ĐỐI KHÔNG sử dụng Emoji trong câu văn. Chỉ dùng các ký tự gạch đầu dòng (-), dấu cộng (+) hoặc số thứ tự để liệt kê.
+            4. **Cấu trúc rõ ràng**: Sử dụng in đậm (**text**) để làm nổi bật ý chính.
+            5. **HIỂN THỊ (QUAN TRỌNG)**: 
+               - **TUYỆT ĐỐI KHÔNG DÙNG BẢNG (NO MARKDOWN TABLES)**.
+               - Dùng danh sách liệt kê.
             `;
         }
 
-        const systemInstruction = `
-        BẠN ĐANG THAM GIA ROLEPLAY (NHẬP VAI).
-        VAI TRÒ: Cố vấn Bảo hiểm Prudential.
-        KHÁCH HÀNG: ${customer.fullName}
-        MỤC TIÊU (KPI): "${conversationGoal}"
-
-        ${agentContext}
-        
-        === THIẾT LẬP GIỌNG ĐIỆU (QUAN TRỌNG NHẤT) ===
-        ${personaInstruction}
-        
-        *LƯU Ý ĐẶC BIỆT*: Trong văn hóa Việt Nam, từ "Tôi" tạo cảm giác xa cách. Hãy luôn tuân thủ cách xưng hô "Em" hoặc "Mình" như đã định nghĩa ở trên.
-
-        THÔNG TIN KHÁCH HÀNG:
-        ${customerProfile}
-
-        DANH SÁCH HỢP ĐỒNG ĐÃ SỞ HỮU (EXISTING CONTRACTS):
-        ${contractsContext}
-
-        THÔNG TIN GIA ĐÌNH & NGƯỜI THÂN (FAMILY CONTEXT):
-        ${familyData}
-
-        === NHIỆM VỤ NÂNG CAO (CONTEXT-AWARE) ===
-        1. **Tra cứu Hợp đồng**: Nếu khách hỏi "Mình có cái gì rồi?", hãy dựa vào danh sách trên để trả lời chính xác tên sản phẩm, số phí, quyền lợi. Đừng bịa.
-        2. **Gợi ý Bán thêm (Upsell/Cross-sell)**:
-           - Hãy tập trung đề xuất các sản phẩm phù hợp với nhu cầu còn thiếu của khách.
-           - Nếu khách có Hợp đồng Chính (Nhân thọ) nhưng chưa có Thẻ sức khỏe -> Gợi ý thêm thẻ.
-           - Dựa vào FAMILY CONTEXT: Nếu thấy Con cái (Child) chưa có hợp đồng -> Gợi ý quỹ học vấn (PRU-Hành Trang Trưởng Thành).
-           - Nếu thấy Vợ/Chồng (Spouse) chưa có bảo hiểm -> Gợi ý bảo vệ trụ cột.
-        3. **Nhắc phí**: Nếu thấy ngày đóng phí sắp đến, hãy khéo léo nhắc.
-
-        === CHIẾN THUẬT GIAO TIẾP "PING-PONG" (BẮT BUỘC TUÂN THỦ) ===
-        1. **CHIA NHỎ NỘI DUNG**: 
-           - Tuyệt đối KHÔNG trả lời một tràng dài như đọc văn mẫu.
-           - Tối đa 2-3 câu ngắn mỗi lần trả lời.
-        
-        2. **CÂU HỎI DẪN DẮT (MICRO-CLOSING)**:
-           - LUÔN LUÔN kết thúc câu trả lời bằng một câu hỏi ngắn để nhường lời cho khách.
-
-        HÃY NHỚ: Mục tiêu không phải là thắng tranh luận, mà là làm khách hàng mở lòng và chốt được giải pháp theo phong cách ${tone}.
+        const quickReplyInstruction = `
+            QUAN TRỌNG - GỢI Ý TRẢ LỜI NHANH (QUICK REPLIES):
+            Ở cuối cùng của câu trả lời, bạn BẮT BUỘC phải cung cấp 3 câu trả lời ngắn (dưới 10 từ) mà NGƯỜI DÙNG có thể dùng để đáp lại bạn ngay lập tức.
+            Dựa trên ngữ cảnh hội thoại để đưa ra gợi ý phù hợp.
+            
+            ĐỊNH DẠNG BẮT BUỘC (Không dùng Markdown block code):
+            <QUICK_REPLIES>["Gợi ý 1", "Gợi ý 2", "Gợi ý 3"]</QUICK_REPLIES>
         `;
+
+        let systemInstruction = "";
+
+        if (roleplayMode === 'consultant') {
+            systemInstruction = `
+            BẠN LÀ: Một Chuyên gia Hoạch định Tài chính (Consultant) của Prudential - Đẳng cấp MDRT.
+            NGƯỜI DÙNG LÀ: Khách hàng (${customer.fullName}).
+            
+            ${customerProfile}
+            ${financialContext}
+            ${styleInstruction}
+            ${quickReplyInstruction}
+
+            NHIỆM VỤ: **THẤU HIỂU** và **KHƠI GỢI NHU CẦU**. Dùng câu hỏi mở, đào sâu vấn đề.
+            `;
+        } else {
+            systemInstruction = `
+            BẠN LÀ: Khách hàng tên ${customer.fullName}.
+            NGƯỜI DÙNG LÀ: Tư vấn viên bảo hiểm Prudential (đang tập luyện với bạn).
+            
+            HỒ SƠ CỦA BẠN:
+            ${customerProfile}
+            ${financialContext}
+            ${styleInstruction}
+            ${quickReplyInstruction}
+
+            NHIỆM VỤ CỦA BẠN (AI):
+            - Đóng vai khách hàng đúng tính cách.
+            - Nếu style là 'zalo': Chat cộc lốc, nhanh, dùng teencode nhẹ.
+            - Nếu style là 'formal': Chat lịch sự, hỏi kỹ về điều khoản.
+            - Đưa ra lời từ chối nếu chưa thuyết phục.
+            `;
+        }
 
         const chat = ai.chats.create({
             model: 'gemini-3-flash-preview',
             config: {
                 systemInstruction: systemInstruction,
-                temperature: tone === 'friendly' ? 0.9 : 0.7, // Friendly needs more creativity
+                temperature: chatStyle === 'zalo' ? 0.8 : 0.6, 
             },
             history: history
         });
 
         const result = await chat.sendMessage({ message: query });
-        return result.text || "Em đang lắng nghe...";
+        return result.text || "...";
 
     } catch (error) {
         console.error("Advisory Chat Error:", error);
-        return "Xin lỗi, kết nối với Cố vấn AI bị gián đoạn.";
+        return "Xin lỗi, kết nối bị gián đoạn.";
     }
 };
 
-/**
- * Generates 3 social media post options (Single Post)
- */
+export const getObjectionSuggestions = async (
+    lastCustomerMessage: string,
+    customer: Customer
+): Promise<{ label: string; content: string; type: 'empathy' | 'logic' | 'story' }[]> => {
+    try {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) return [];
+
+        const ai = new GoogleGenAI({ apiKey });
+
+        const systemInstruction = `
+            Bạn là HUẤN LUYỆN VIÊN BÁN HÀNG (SALES COACH) của Prudential.
+            
+            TÌNH HUỐNG: 
+            Tư vấn viên đang chat với khách hàng (${customer.fullName}, tính cách ${customer.analysis?.personality}).
+            Khách hàng vừa nhắn: "${lastCustomerMessage}"
+            
+            NHIỆM VỤ:
+            Gợi ý 3 cách trả lời xuất sắc để xử lý lời từ chối/băn khoăn này.
+            
+            YÊU CẦU OUTPUT (JSON ARRAY):
+            [
+                { 
+                    "type": "empathy", 
+                    "label": "Đồng cảm & Mềm mỏng", 
+                    "content": "Câu thoại mẫu..." 
+                },
+                { 
+                    "type": "logic", 
+                    "label": "Dùng Số liệu/Logic", 
+                    "content": "Câu thoại mẫu..." 
+                },
+                { 
+                    "type": "story", 
+                    "label": "Kể chuyện/Câu hỏi ngược", 
+                    "content": "Câu thoại mẫu..." 
+                }
+            ]
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                temperature: 0.5
+            },
+            contents: "Hãy phân tích và gợi ý ngay."
+        });
+
+        const text = response.text || "[]";
+        return JSON.parse(text);
+
+    } catch (error) {
+        console.error("Objection Suggestions Error:", error);
+        return [];
+    }
+};
+
 export const generateSocialPost = async (
     topic: string,
     tone: string
@@ -367,9 +424,6 @@ export const generateSocialPost = async (
     }
 };
 
-/**
- * Generates a 5-day Content Series
- */
 export const generateContentSeries = async (
     topic: string
 ): Promise<{ day: string; type: string; content: string }[]> => {
@@ -421,9 +475,6 @@ export const generateContentSeries = async (
     }
 };
 
-/**
- * Storytelling Mode: Transforms facts into a story
- */
 export const generateStory = async (
     facts: string,
     emotion: string
@@ -466,9 +517,6 @@ export const generateStory = async (
     }
 };
 
-/**
- * Analyzes conversation and returns 3 objection handling options in JSON
- */
 export const getObjectionAnalysis = async (
     customer: Customer,
     history: { role: 'user' | 'model'; parts: { text: string }[] }[]
@@ -512,7 +560,6 @@ export const getObjectionAnalysis = async (
         });
 
         const text = result.text || "[]";
-        // Clean markdown if present (though responseMimeType should handle it, keeping safety)
         const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanText);
 
@@ -522,9 +569,6 @@ export const getObjectionAnalysis = async (
     }
 };
 
-/**
- * Generates a claim guide message
- */
 export const generateClaimSupport = async (
     contract: Contract,
     customer: Customer

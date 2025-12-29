@@ -214,7 +214,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                 </div>
                             )}
 
-                            {/* TAB: ILLUSTRATIONS (New) */}
+                            {/* TAB: ILLUSTRATIONS (Updated with Detail Breakdown) */}
                             {activeTab === 'illustrations' && (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-2">
@@ -226,17 +226,13 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                     {customerIllustrations.length > 0 ? (
                                         <div className="space-y-4">
                                             {customerIllustrations.map(ill => (
-                                                <div key={ill.id} className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-xl p-4 relative group">
-                                                    <div className="flex justify-between items-start">
+                                                <div key={ill.id} className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-xl p-4 relative group transition-all hover:shadow-md">
+                                                    
+                                                    {/* Header: Title & Status */}
+                                                    <div className="flex justify-between items-start mb-3">
                                                         <div>
-                                                            <div className="font-bold text-yellow-800 dark:text-yellow-500 text-lg mb-1">{ill.mainProduct.productName}</div>
-                                                            <p className="text-xs text-gray-500 mb-2">Tạo ngày: {formatDateVN(ill.createdAt.split('T')[0])}</p>
-                                                            <div className="text-sm">
-                                                                <div><b>Sản phẩm chính:</b> {ill.mainProduct.sumAssured.toLocaleString()}đ</div>
-                                                                <div className="text-xs text-gray-500 mt-1">
-                                                                    <b>Bổ trợ:</b> {ill.riders.map(r => r.productName).join(', ')}
-                                                                </div>
-                                                            </div>
+                                                            <div className="font-bold text-yellow-800 dark:text-yellow-500 text-lg">{ill.mainProduct.productName}</div>
+                                                            <p className="text-xs text-gray-500">Ngày tạo: {formatDateVN(ill.createdAt.split('T')[0])}</p>
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="font-bold text-lg text-pru-red">{ill.totalFee.toLocaleString()} đ</div>
@@ -246,19 +242,54 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Reason box */}
-                                                    <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded text-sm text-gray-600 dark:text-gray-300 italic border border-yellow-100 dark:border-gray-700">
-                                                        "{ill.reasoning}"
+                                                    {/* Detail Breakdown Table */}
+                                                    <div className="bg-white dark:bg-gray-800 rounded-lg border border-yellow-100 dark:border-gray-700 overflow-hidden text-sm">
+                                                        {/* Header Row */}
+                                                        <div className="grid grid-cols-12 gap-2 bg-yellow-50/50 dark:bg-gray-700/50 p-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                                                            <div className="col-span-6">Quyền lợi bảo vệ</div>
+                                                            <div className="col-span-3 text-right">STBH / Gói</div>
+                                                            <div className="col-span-3 text-right">Phí dự kiến</div>
+                                                        </div>
+
+                                                        {/* Main Product */}
+                                                        <div className="grid grid-cols-12 gap-2 p-2 border-b border-gray-100 dark:border-gray-700">
+                                                            <div className="col-span-6 font-bold text-gray-800 dark:text-gray-200">
+                                                                <span className="text-blue-600 mr-1 text-xs bg-blue-50 px-1 rounded">[Chính]</span> {ill.mainProduct.productName}
+                                                            </div>
+                                                            <div className="col-span-3 text-right font-medium text-gray-800 dark:text-gray-300">{ill.mainProduct.sumAssured.toLocaleString()}</div>
+                                                            <div className="col-span-3 text-right text-pru-red dark:text-red-400 font-bold">{ill.mainProduct.fee.toLocaleString()}</div>
+                                                        </div>
+
+                                                        {/* Riders Loop */}
+                                                        {ill.riders.map((r, idx) => (
+                                                            <div key={idx} className="grid grid-cols-12 gap-2 p-2 border-b border-gray-50 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
+                                                                <div className="col-span-6 text-gray-600 dark:text-gray-400 pl-6 text-xs relative">
+                                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-300">└</span>
+                                                                    {r.productName}
+                                                                </div>
+                                                                <div className="col-span-3 text-right text-gray-600 dark:text-gray-400 text-xs font-medium">
+                                                                    {r.attributes?.plan ? r.attributes.plan : r.sumAssured.toLocaleString()}
+                                                                </div>
+                                                                <div className="col-span-3 text-right text-gray-500 dark:text-gray-400 text-xs">{r.fee.toLocaleString()}</div>
+                                                            </div>
+                                                        ))}
                                                     </div>
+                                                    
+                                                    {/* Reason box */}
+                                                    {ill.reasoning && (
+                                                        <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded text-xs text-gray-600 dark:text-gray-300 italic border border-dashed border-gray-200 dark:border-gray-700">
+                                                            <i className="fas fa-quote-left text-gray-300 mr-2"></i>{ill.reasoning}
+                                                        </div>
+                                                    )}
 
                                                     {/* Actions */}
                                                     {ill.status !== 'CONVERTED' && (
-                                                        <div className="mt-4 flex justify-end gap-2 border-t border-yellow-200 dark:border-gray-700 pt-3">
+                                                        <div className="mt-3 flex justify-end gap-2 pt-2">
                                                             <button 
                                                                 onClick={() => onDeleteIllustration && onDeleteIllustration(ill.id)}
-                                                                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-100"
+                                                                className="px-3 py-1.5 bg-white border border-gray-300 text-red-500 text-xs font-bold rounded hover:bg-red-50"
                                                             >
-                                                                Xóa
+                                                                <i className="fas fa-trash"></i>
                                                             </button>
                                                             <button 
                                                                 onClick={() => handleConvertIll(ill)}
@@ -335,9 +366,101 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                 </div>
             )}
 
-            {/* View Contract Modal & Import (Preserved) */}
-            {viewContract && <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><div className="bg-white p-6 rounded-xl max-w-md w-full"><h3>{viewContract.contractNumber}</h3><button onClick={()=>setViewContract(null)}>Close</button></div></div>}
+            {/* View Contract Modal - Enhanced */}
+            {viewContract && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white dark:bg-pru-card rounded-xl max-w-lg w-full p-6 shadow-2xl transition-colors border border-gray-100 dark:border-gray-700 relative">
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-6 border-b border-gray-100 dark:border-gray-800 pb-4">
+                            <div>
+                                <h3 className="text-2xl font-bold text-pru-red dark:text-red-400 flex items-center gap-2">
+                                    <i className="fas fa-file-contract"></i>
+                                    {viewContract.contractNumber}
+                                </h3>
+                                <div className={`inline-block px-2 py-0.5 rounded text-xs font-bold mt-1 ${viewContract.status === 'Đang hiệu lực' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {viewContract.status}
+                                </div>
+                            </div>
+                            <button onClick={() => setViewContract(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-100 dark:bg-gray-800 w-8 h-8 rounded-full flex items-center justify-center transition">
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+
+                        {/* Content Details */}
+                        <div className="space-y-5">
+                            {/* Main Product */}
+                            <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl">
+                                <div className="text-xs font-bold text-gray-500 uppercase mb-2">Sản phẩm chính</div>
+                                <div className="font-bold text-gray-800 dark:text-gray-100 text-lg mb-1">{viewContract.mainProduct.productName}</div>
+                                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
+                                    <span>
+                                         {(viewContract.mainProduct.productName.toLowerCase().includes('hành trang vui khỏe') || viewContract.mainProduct.productName.toLowerCase().includes('sức khỏe')) && viewContract.mainProduct.attributes?.plan
+                                            ? `Chương trình: ${viewContract.mainProduct.attributes.plan}`
+                                            : `STBH: ${viewContract.mainProduct.sumAssured.toLocaleString()} đ`
+                                         }
+                                    </span>
+                                    <span>Phí: {viewContract.mainProduct.fee.toLocaleString()} đ</span>
+                                </div>
+                            </div>
+
+                            {/* Riders */}
+                            {viewContract.riders.length > 0 && (
+                                <div>
+                                    <div className="text-xs font-bold text-gray-500 uppercase mb-2">Sản phẩm bổ trợ ({viewContract.riders.length})</div>
+                                    <div className="space-y-2">
+                                        {viewContract.riders.map((r, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm p-2 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                                                <div className="flex-1 pr-2">
+                                                    <div className="font-medium text-gray-800 dark:text-gray-200">{r.productName}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {(r.productName.toLowerCase().includes('hành trang vui khỏe') || r.productName.toLowerCase().includes('sức khỏe')) && r.attributes?.plan
+                                                            ? `Chương trình: ${r.attributes.plan}`
+                                                            : `STBH: ${r.sumAssured.toLocaleString()} đ`
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div className="font-bold text-gray-600 dark:text-gray-400">{r.fee.toLocaleString()} đ</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Dates & Totals */}
+                            <div className="grid grid-cols-2 gap-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+                                <div>
+                                    <div className="text-xs text-gray-500">Ngày hiệu lực</div>
+                                    <div className="font-medium text-gray-800 dark:text-gray-200">{formatDateVN(viewContract.effectiveDate)}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-gray-500">Ngày đóng phí tới</div>
+                                    <div className="font-medium text-gray-800 dark:text-gray-200">{formatDateVN(viewContract.nextPaymentDate)}</div>
+                                </div>
+                            </div>
+
+                            <div className="bg-pru-red/10 dark:bg-red-900/20 p-4 rounded-xl flex justify-between items-center mt-2">
+                                <span className="text-sm font-bold text-pru-red dark:text-red-300">Tổng phí đóng ({viewContract.paymentFrequency})</span>
+                                <span className="text-xl font-bold text-pru-red dark:text-red-400">{viewContract.totalFee.toLocaleString()} đ</span>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-6">
+                            <button onClick={() => setViewContract(null)} className="w-full py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             
+            <ConfirmModal 
+                isOpen={deleteConfirm.isOpen} 
+                title="Xóa khách hàng?" 
+                message={`Bạn có chắc muốn xóa khách hàng ${deleteConfirm.name}? Hành động này không thể hoàn tác.`} 
+                onConfirm={() => onDelete(deleteConfirm.id)} 
+                onClose={() => setDeleteConfirm({ isOpen: false, id: '', name: '' })} 
+            />
+
             <ExcelImportModal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Nhập Khách Hàng từ Excel" onDownloadTemplate={() => downloadTemplate('customer')} onProcessFile={(file) => processCustomerImport(file, customers)} onSave={handleBatchSave} />
 
             <style>{`

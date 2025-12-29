@@ -72,6 +72,15 @@ export interface CustomerRelationship {
   relationship: RelationshipType;
 }
 
+// --- NEW: FINANCIAL PLANNING RECORD ---
+export interface FinancialPlanRecord {
+  id: string;
+  createdAt: string; // ISO Date
+  goal: FinancialGoal;
+  inputs: any; // Stores the surveyData state
+  result: PlanResult;
+}
+
 export interface Customer {
   id: string;
   fullName: string;
@@ -85,6 +94,7 @@ export interface Customer {
   analysis: CustomerAnalysis; 
   documents?: CustomerDocument[]; // Digital Cabinet
   relationships?: CustomerRelationship[]; // Family Tree
+  financialPlans?: FinancialPlanRecord[]; // Saved Financial Plans
   interactionHistory: string[];
   status: CustomerStatus;
 }
@@ -131,6 +141,20 @@ export interface ProductCalculationConfig {
   resultKey: string;       // Cột kết quả (Rate hoặc Fee)
 }
 
+// --- NEW: PROJECTION CONFIG (For Cash Flow) ---
+export interface ProjectionConfig {
+  defaultInterestRate: number; // e.g. 0.05 (5%)
+  highInterestRate: number; // e.g. 0.065 (6.5%)
+  // Allocation Charge (Phí ban đầu): Map year -> percentage deducted. e.g. {1: 0.85, 2: 0.50 ...}
+  initialCharges: Record<number, number>; 
+  // Loyalty Bonus (Thưởng): Map year -> percentage of AV or Premium
+  bonuses: {
+      year: number;
+      rate: number; // % of average premium
+      type: 'PREMIUM_BASED' | 'ACCOUNT_BASED';
+  }[];
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -145,6 +169,7 @@ export interface Product {
   // --- New Dynamic Fields ---
   rateTable?: Record<string, any>[]; // Dữ liệu thô từ Excel
   calculationConfig?: ProductCalculationConfig; // Cấu hình ánh xạ
+  projectionConfig?: ProjectionConfig; // Cấu hình dòng tiền
 }
 
 export interface ContractProduct {
@@ -201,6 +226,12 @@ export interface Illustration {
   totalFee: number;
   reasoning: string; // AI reasoning
   status: 'DRAFT' | 'ACCEPTED' | 'REJECTED' | 'CONVERTED';
+  // Snapshot for projection
+  projectionSnapshot?: {
+      interestRate: number;
+      years: number;
+      data: any[]; // The projected data
+  };
 }
 
 export enum AppointmentType {
@@ -239,6 +270,14 @@ export interface Appointment {
   outcomeNote?: string;
 }
 
+// --- NEW SALES TARGET INTERFACE ---
+export interface SalesTargets {
+  weekly: number;   // Mục tiêu tuần
+  monthly: number;  // Mục tiêu tháng
+  quarterly: number; // Mục tiêu quý
+  yearly: number;   // Mục tiêu năm
+}
+
 // --- UPDATED AGENT PROFILE INTERFACE ---
 export interface AgentProfile {
   id?: string;
@@ -254,6 +293,7 @@ export interface AgentProfile {
   agentCode: string;
   title: string; // e.g. MDRT, MBA, Chuyên viên cao cấp
   bio: string; // Short self-description
+  targets?: SalesTargets; // Added Sales Targets
 }
 
 // --- NEW MESSAGE TEMPLATE INTERFACE ---
@@ -264,6 +304,23 @@ export interface MessageTemplate {
   category: 'birthday' | 'payment' | 'care' | 'holiday' | 'other';
   icon?: string;
   color?: string;
+}
+
+// --- NEW FINANCIAL PLANNING TYPES ---
+export enum FinancialGoal {
+  RETIREMENT = 'Hưu trí an nhàn',
+  EDUCATION = 'Qũy học vấn cho con',
+  PROTECTION = 'Bảo vệ thu nhập (Trụ cột)',
+  HEALTH = 'Quỹ dự phòng y tế'
+}
+
+export interface PlanResult {
+  goal: FinancialGoal;
+  requiredAmount: number; // Số tiền mục tiêu (Tương lai hoặc Hiện tại tùy loại)
+  currentAmount: number; // Số tiền đã có
+  shortfall: number; // Thiếu hụt
+  monthlySavingNeeded?: number; // Cần tiết kiệm thêm mỗi tháng
+  details: any; // Chi tiết tính toán
 }
 
 export interface AppState {

@@ -152,6 +152,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
             age: testInputs.age,
             gender: testInputs.gender,
             term: testInputs.term,
+            occupationGroup: testInputs.occupationGroup,
             htvkPlan: testInputs.htvkPlan,
             htvkPackage: testInputs.htvkPackage
         });
@@ -280,7 +281,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                 <div className="space-y-6">
                                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                         <h4 className="font-bold text-blue-800 dark:text-blue-300 mb-2 flex items-center"><i className="fas fa-file-excel mr-2"></i> Upload Biểu Phí (Excel)</h4>
-                                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-4">File Excel cần có hàng đầu tiên là tiêu đề cột (VD: Age, Gender, Rate...).</p>
+                                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-4">File Excel cần có hàng đầu tiên là tiêu đề cột (VD: Age, Gender, Rate, Occupation...).</p>
                                         <input 
                                             type="file" 
                                             accept=".xlsx, .xls"
@@ -355,6 +356,13 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                                                     {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
                                                                 </select>
                                                             </div>
+                                                            <div>
+                                                                <label className="label-text text-xs">Cột Nhóm nghề (Occupation)</label>
+                                                                <select className="input-field text-xs py-1" value={formData.calculationConfig?.lookupKeys?.occupation || ''} onChange={e => setFormData({...formData, calculationConfig: { ...formData.calculationConfig!, lookupKeys: { ...formData.calculationConfig!.lookupKeys, occupation: e.target.value } }})}>
+                                                                    <option value="">-- Không dùng --</option>
+                                                                    {excelColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                                                </select>
+                                                            </div>
                                                         </>
                                                     ) : (
                                                         <>
@@ -413,6 +421,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                                         <>
                                                             <CurrencyInput className="input-field text-xs py-1" placeholder="STBH" value={testInputs.sumAssured} onChange={v => setTestInputs({...testInputs, sumAssured: v})} />
                                                             <input type="number" placeholder="Thời hạn (năm)" className="input-field text-xs py-1" value={testInputs.term} onChange={e => setTestInputs({...testInputs, term: Number(e.target.value)})} />
+                                                            <input type="number" placeholder="Nhóm nghề (1-4)" className="input-field text-xs py-1" value={testInputs.occupationGroup} onChange={e => setTestInputs({...testInputs, occupationGroup: Number(e.target.value)})} />
                                                         </>
                                                     )}
                                                     
