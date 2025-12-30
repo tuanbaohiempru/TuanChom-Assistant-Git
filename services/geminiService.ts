@@ -10,8 +10,17 @@ const callAI = async (payload: any): Promise<string> => {
         const result: any = await gateway(payload);
         return result.data.text || "";
     } catch (error: any) {
-        console.error("AI Service Error:", error);
-        return `Lỗi kết nối AI: ${error.message || 'Vui lòng thử lại sau.'}`;
+        console.error("AI Service Error Full:", error);
+        
+        // Lấy message chi tiết từ HttpsError
+        const msg = error.message || 'Lỗi không xác định';
+        
+        // Nếu lỗi liên quan đến Model không tìm thấy, gợi ý người dùng
+        if (msg.includes("Model không tồn tại")) {
+            return `Lỗi AI: Model chưa được hỗ trợ. Hãy thử đổi model khác trong code (VD: gemini-1.5-flash).`;
+        }
+        
+        return `Lỗi AI: ${msg}`;
     }
 };
 
@@ -40,7 +49,7 @@ export const generateFinancialAdvice = async (
 
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp', // Dùng bản ổn định hơn 3-preview nếu gặp lỗi
         contents: prompt
     });
 };
@@ -122,9 +131,6 @@ export const chatWithData = async (
       - Gợi ý chăm sóc: Đưa ra hành động cụ thể.
     `;
 
-    // Map history to parts format for SDK if needed, but backend wrapper handles { role, parts: [{text}] } conversion usually.
-    // However, our backend chat helper expects 'history' array compatible with SDK.
-    // The SDK expects { role: string, parts: { text: string }[] }
     const formattedHistory = history.map(h => ({
         role: h.role,
         parts: [{ text: h.text }]
@@ -132,7 +138,7 @@ export const chatWithData = async (
 
     return await callAI({
         endpoint: 'chat',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         message: query,
         history: formattedHistory,
         systemInstruction: systemInstruction,
@@ -151,7 +157,7 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
                 
                 const response = await callAI({
                     endpoint: 'generateContent',
-                    model: 'gemini-3-flash-preview',
+                    model: 'gemini-2.0-flash-exp',
                     contents: {
                         parts: [
                             { inlineData: { mimeType: file.type, data: base64 } },
@@ -264,7 +270,7 @@ export const consultantChat = async (
 
     return await callAI({
         endpoint: 'chat',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         message: query,
         history: formattedHistory,
         systemInstruction: systemInstruction,
@@ -296,7 +302,7 @@ export const getObjectionSuggestions = async (
 
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: "Hãy phân tích và gợi ý ngay.",
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.5 }
@@ -318,7 +324,7 @@ export const generateSocialPost = async (topic: string, tone: string): Promise<{
     `;
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: `Chủ đề: ${topic}`,
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.8 }
@@ -333,7 +339,7 @@ export const generateContentSeries = async (topic: string): Promise<{ day: strin
     `;
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: `Chủ đề Series: ${topic}`,
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.7 }
@@ -349,7 +355,7 @@ export const generateStory = async (facts: string, emotion: string): Promise<str
     `;
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: `Dữ kiện: ${facts}`,
         systemInstruction: systemInstruction,
         config: { temperature: 0.9 }
@@ -377,7 +383,7 @@ export const generateClaimSupport = async (contract: Contract, customer: Custome
 
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: prompt
     });
 };
