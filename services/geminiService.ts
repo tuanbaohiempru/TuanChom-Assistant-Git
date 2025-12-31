@@ -55,8 +55,12 @@ export const generateFinancialAdvice = async (
 };
 
 const prepareContext = (state: AppState) => {
+  // SAFETY LIMIT: Only send top 50 recent customers and contracts to avoid Token Limit Exceeded
+  const recentCustomers = state.customers.slice(0, 50);
+  const recentContracts = state.contracts.slice(0, 50);
+
   return JSON.stringify({
-    customers: state.customers.map(c => ({
+    customers: recentCustomers.map(c => ({
       name: c.fullName,
       id: c.id,
       dob: c.dob,
@@ -65,7 +69,7 @@ const prepareContext = (state: AppState) => {
       status: c.status,
       interactions: c.interactionHistory
     })),
-    contracts: state.contracts.map(c => ({
+    contracts: recentContracts.map(c => ({
       number: c.contractNumber,
       ownerId: c.customerId,
       status: c.status,
@@ -92,7 +96,7 @@ const prepareContext = (state: AppState) => {
       description: p.description,
       rules: p.rulesAndTerms,
     })),
-    appointments: state.appointments
+    appointments: state.appointments.slice(0, 20) // Limit appointments too
   });
 };
 
@@ -186,29 +190,48 @@ export const consultantChat = async (
     planResult: PlanResult | null = null,
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
-    const customerProfile = `
-        KHÁCH HÀNG: ${customer.fullName}
-        TUỔI: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}
-        NGHỀ NGHIỆP: ${customer.job}
-        TÌNH TRẠNG: ${customer.analysis?.financialStatus}
-        TÍNH CÁCH: ${customer.analysis?.personality}
-        MỐI QUAN TÂM: ${customer.analysis?.keyConcerns}
-    `;
+    
+    // 1. FORMAT PORTFOLIO (Hợp đồng hiện có)
+    const portfolioText = contracts.length > 0
+        ? contracts.map(c => {
+            const riders = c.riders.map(r => `${r.productName}`).join(', ');
+            return `- HĐ số ${c.contractNumber} (${c.status}): SP Chính ${c.mainProduct.productName} (Mệnh giá: ${c.mainProduct.sumAssured.toLocaleString()}đ, Phí: ${c.totalFee.toLocaleString()}đ/năm). ${riders ? `\n  + Bổ trợ: ${riders}` : ''}`;
+        }).join('\n')
+        : "Chưa tham gia hợp đồng bảo hiểm nào tại Prudential (Khách hàng mới/Tiềm năng).";
 
-    const financialContext = planResult ? `
-        DỮ LIỆU TÀI CHÍNH:
-        - Mục tiêu: ${planResult.goal}
-        - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()} VNĐ
-    ` : "";
+    // 2. FORMAT FAMILY (Người thân & Tình trạng BH)
+    const familyText = familyContext.length > 0
+        ? familyContext.map(f => `- ${f.relationship}: ${f.name} (${f.age} tuổi) -> Trạng thái: ${f.hasContracts ? 'ĐÃ CÓ BẢO HIỂM' : 'CHƯA CÓ BẢO HIỂM (Cơ hội bán)'}`).join('\n')
+        : "Chưa có thông tin về gia đình.";
+
+    // 3. BUILD FULL PROFILE
+    const fullProfile = `
+        === HỒ SƠ KHÁCH HÀNG (KYC) ===
+        - Họ tên: ${customer.fullName}
+        - Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}
+        - Nghề nghiệp: ${customer.job}
+        - Tình trạng tài chính: ${customer.analysis?.financialStatus}
+        - Tính cách (DISC): ${customer.analysis?.personality}
+        - Mối quan tâm hàng đầu: ${customer.analysis?.keyConcerns}
+
+        === DANH MỤC BẢO HIỂM HIỆN CÓ (PORTFOLIO) ===
+        ${portfolioText}
+
+        === GIA ĐÌNH & MỐI QUAN HỆ ===
+        ${familyText}
+        
+        === DỮ LIỆU HOẠCH ĐỊNH TÀI CHÍNH (NẾU CÓ) ===
+        ${planResult ? `- Mục tiêu: ${planResult.goal}\n- Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()} VNĐ` : "Chưa làm bài hoạch định tài chính."}
+    `;
 
     let styleInstruction = "";
     if (chatStyle === 'zalo') {
         styleInstruction = `
         PHONG CÁCH GIAO TIẾP: BẠN BÈ / THÂN MẬT (Casual Zalo)
-        1. **Cực ngắn**: Mỗi ý chỉ 1-2 câu.
+        1. **Cực ngắn**: Mỗi ý chỉ 1-2 câu. Viết như đang chat Zalo nhanh.
         2. **Tự nhiên**: Xưng hô Em - Anh/Chị (hoặc Bạn/Mình). Bỏ qua các từ sáo rỗng.
         3. **HẠN CHẾ EMOJI**: Chỉ sử dụng tối đa 1-2 emoji ở cuối tin nhắn.
-        4. **Trực diện**: Đi thẳng vào lợi ích.
+        4. **Trực diện**: Đi thẳng vào vấn đề.
         5. **HIỂN THỊ**: TUYỆT ĐỐI KHÔNG DÙNG BẢNG (TABLE).
         `;
     } else {
@@ -239,27 +262,37 @@ export const consultantChat = async (
         BẠN LÀ: Một Chuyên gia Hoạch định Tài chính (Consultant) của Prudential - Đẳng cấp MDRT.
         NGƯỜI DÙNG LÀ: Khách hàng (${customer.fullName}).
         
-        ${customerProfile}
-        ${financialContext}
+        MỤC TIÊU CUỘC TRÒ CHUYỆN: "${conversationGoal}"
+        
+        ${fullProfile}
+        
         ${styleInstruction}
         ${quickReplyInstruction}
 
-        NHIỆM VỤ: **THẤU HIỂU** và **KHƠI GỢI NHU CẦU**. Dùng câu hỏi mở, đào sâu vấn đề.
+        NHIỆM VỤ CHIẾN LƯỢC: 
+        - Dựa vào **PORTFOLIO** để biết khách đã có gì và chưa có gì. Đừng mời chào sản phẩm khách đã mua rồi.
+        - Dựa vào **GIA ĐÌNH** để gợi ý bảo vệ cho người thân chưa có bảo hiểm (Cross-sell).
+        - **Dẫn dắt câu chuyện** để đạt được MỤC TIÊU đã đề ra ở trên.
+        - Dùng kỹ thuật đặt câu hỏi SPIN (Situation, Problem, Implication, Need-payoff) để khơi gợi.
         `;
     } else {
         systemInstruction = `
         BẠN LÀ: Khách hàng tên ${customer.fullName}.
         NGƯỜI DÙNG LÀ: Tư vấn viên bảo hiểm Prudential (đang tập luyện với bạn).
         
-        HỒ SƠ CỦA BẠN:
-        ${customerProfile}
-        ${financialContext}
+        TƯ VẤN VIÊN ĐANG CÓ MỤC TIÊU: "${conversationGoal}"
+        
+        HỒ SƠ CỦA BẠN (Học kỹ để đóng vai cho giống):
+        ${fullProfile}
+        
         ${styleInstruction}
         ${quickReplyInstruction}
 
         NHIỆM VỤ CỦA BẠN (AI):
         - Đóng vai khách hàng đúng tính cách.
-        - Đưa ra lời từ chối nếu chưa thuyết phục.
+        - Nếu Tư vấn viên hỏi về Hợp đồng cũ, hãy trả lời dựa trên PORTFOLIO của bạn.
+        - Nếu hỏi về gia đình, trả lời dựa trên thông tin GIA ĐÌNH.
+        - Đưa ra các lời từ chối phổ biến (không có tiền, cần hỏi vợ/chồng, để suy nghĩ thêm...) để thử thách tư vấn viên.
         `;
     }
 

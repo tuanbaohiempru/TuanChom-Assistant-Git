@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Customer, AgentProfile, Contract, FinancialGoal, PlanResult, FinancialPlanRecord } from '../types';
+import { Customer, AgentProfile, Contract, FinancialGoal, PlanResult, FinancialPlanRecord, ContractStatus } from '../types';
 import { CurrencyInput, cleanMarkdownForClipboard, formatDateVN } from '../components/Shared';
 import { calculateRetirement, calculateProtection, calculateEducation } from '../services/financialCalculator';
 import { consultantChat, getObjectionSuggestions, generateFinancialAdvice } from '../services/geminiService';
@@ -22,8 +23,23 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
     const [mode, setMode] = useState<'chat' | 'plan'>('plan'); 
 
     // --- ROLEPLAY CONFIG ---
+    const [isChatStarted, setIsChatStarted] = useState(false);
     const [roleplayMode, setRoleplayMode] = useState<'consultant' | 'customer'>('consultant');
     const [chatStyle, setChatStyle] = useState<'zalo' | 'formal'>('formal'); 
+    const [chatGoal, setChatGoal] = useState<string>('Tìm hiểu nhu cầu bảo hiểm');
+    const [customGoal, setCustomGoal] = useState('');
+
+    // Predefined Goals
+    const GOAL_OPTIONS = [
+        "Tìm hiểu nhu cầu bảo hiểm",
+        "Khai thác bán thêm (Upsell/Cross-sell)",
+        "Xin lời giới thiệu (Khách hàng tiềm năng)",
+        "Mời tham dự Hội thảo / GP",
+        "Xử lý từ chối (Khách nói không có tiền)",
+        "Xử lý từ chối (Cần hỏi ý kiến người thân)",
+        "Chăm sóc sau bán hàng",
+        "Khôi phục hợp đồng mất hiệu lực"
+    ];
 
     // --- WIZARD STATE ---
     const [step, setStep] = useState(1);
@@ -173,8 +189,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
         });
     };
 
-    // ... (Chat Logic remains same)
-    const switchRoleplayMode = (newMode: 'consultant' | 'customer') => { setRoleplayMode(newMode); setMessages([]); setSuggestions([]); setQuickReplies([]); };
+    // --- CHAT LOGIC ---
     const processAIResponse = (text: string) => {
         let cleanText = text;
         const quickReplyRegex = /<QUICK_REPLIES>(.*?)<\/QUICK_REPLIES>/s;
@@ -188,28 +203,75 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
         } else { setQuickReplies([]); }
         return cleanText;
     };
+
+    // Helper: Build Family Context Data
+    const getFamilyContext = () => {
+        if (!customer || !customer.relationships) return [];
+        return customer.relationships.map(rel => {
+            const relative = customers.find(c => c.id === rel.relatedCustomerId);
+            if (!relative) return null;
+            
+            const relContracts = contracts.filter(c => c.customerId === relative.id && c.status === ContractStatus.ACTIVE);
+            const age = new Date().getFullYear() - new Date(relative.dob).getFullYear();
+            
+            return {
+                name: relative.fullName,
+                relationship: rel.relationship,
+                age: age,
+                hasContracts: relContracts.length > 0
+            };
+        }).filter(Boolean);
+    };
+
     const handleStartChat = async () => {
         if (!customer) return;
-        setMode('chat');
-        if (messages.length === 0) {
-            setIsSending(true);
-            const initialPrompt = roleplayMode === 'consultant' ? "Hãy bắt đầu buổi tư vấn..." : "Hãy bắt đầu bằng một câu chào...";
-            const rawResponse = await consultantChat(initialPrompt, customer, customerContracts, [], agentProfile, selectedGoal || '', [], roleplayMode, planResult, chatStyle);
+        const finalGoal = customGoal.trim() || chatGoal;
+        setIsChatStarted(true);
+        setMessages([]); // Clear old messages
+        setIsSending(true);
+        
+        const initialPrompt = roleplayMode === 'consultant' 
+            ? `Hãy bắt đầu buổi tư vấn với mục tiêu: ${finalGoal}.` 
+            : `Hãy đóng vai khách hàng và chờ tôi bắt đầu câu chuyện với mục tiêu: ${finalGoal}. Hãy chào tôi trước một câu ngắn gọn.`;
+        
+        try {
+            const familyData = getFamilyContext();
+            const rawResponse = await consultantChat(initialPrompt, customer, customerContracts, familyData, agentProfile, finalGoal, [], roleplayMode, planResult, chatStyle);
             setMessages([{ role: 'model', text: processAIResponse(rawResponse) }]);
+        } catch (error) {
+            setMessages([{ role: 'model', text: "Lỗi kết nối AI. Vui lòng thử lại." }]);
+        } finally {
             setIsSending(false);
         }
     };
-    useEffect(() => { if (mode === 'chat' && messages.length === 0) handleStartChat(); }, [mode, roleplayMode]);
+
+    const handleResetChat = () => {
+        setIsChatStarted(false);
+        setMessages([]);
+        setQuickReplies([]);
+        setSuggestions([]);
+    };
+
     const handleSendMessage = async (msgText?: string) => {
         const textToSend = msgText || input;
         if (!textToSend.trim() || !customer) return;
+        
+        const finalGoal = customGoal.trim() || chatGoal;
         setInput(''); setQuickReplies([]); setSuggestions([]);
         setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
         setIsSending(true);
-        const rawResponse = await consultantChat(textToSend, customer, customerContracts, [], agentProfile, selectedGoal || '', messages, roleplayMode, planResult, chatStyle);
-        setMessages(prev => [...prev, { role: 'model', text: processAIResponse(rawResponse) }]);
-        setIsSending(false);
+        
+        try {
+            const familyData = getFamilyContext();
+            const rawResponse = await consultantChat(textToSend, customer, customerContracts, familyData, agentProfile, finalGoal, messages, roleplayMode, planResult, chatStyle);
+            setMessages(prev => [...prev, { role: 'model', text: processAIResponse(rawResponse) }]);
+        } catch (error) {
+            setMessages(prev => [...prev, { role: 'model', text: "Lỗi kết nối. Vui lòng thử lại." }]);
+        } finally {
+            setIsSending(false);
+        }
     };
+
     const handleGetSuggestions = async () => {
         if (!customer || messages.length === 0) return;
         const lastAiMsg = [...messages].reverse().find(m => m.role === 'model');
@@ -220,6 +282,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
             setIsLoadingSuggestions(false);
         }
     };
+
     const handleCopy = (text: string, index: number) => {
         navigator.clipboard.writeText(cleanMarkdownForClipboard(text));
         setCopiedIndex(index);
@@ -469,7 +532,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                 {planResult.shortfall > 0 ? (
                     <div className="text-center space-y-4">
                         <div className="flex justify-center gap-3">
-                            <button onClick={handleStartChat} className="bg-purple-600 text-white px-5 py-3 rounded-full font-bold shadow-lg hover:bg-purple-700 transition flex items-center animate-pulse text-sm">
+                            <button onClick={() => { setChatGoal(`Tư vấn giải pháp cho ${planResult.goal} với mức thiếu hụt ${planResult.shortfall.toLocaleString()}đ`); setMode('chat'); }} className="bg-purple-600 text-white px-5 py-3 rounded-full font-bold shadow-lg hover:bg-purple-700 transition flex items-center animate-pulse text-sm">
                                 <i className="fas fa-comments mr-2"></i> Tập Roleplay
                             </button>
                             <button onClick={handleDesignSolution} className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-5 py-3 rounded-full font-bold shadow-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition flex items-center text-sm">
@@ -499,20 +562,22 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
     return (
         <div className="flex flex-col h-[calc(100vh-theme(spacing.16))] md:h-screen bg-gray-100 dark:bg-black transition-colors">
             {/* Header */}
-            <div className="bg-white dark:bg-pru-card border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex justify-between items-center shadow-sm">
+            <div className="bg-white dark:bg-pru-card border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex justify-between items-center shadow-sm flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate('/customers')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                         <i className="fas fa-arrow-left text-lg"></i>
                     </button>
                     <div>
                         <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">Hoạch định Tài chính: {customer.fullName}</h1>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Bước {step}/3: {step === 1 ? 'Chọn nhu cầu' : step === 2 ? 'Khảo sát' : 'Phân tích & Giải pháp'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {mode === 'plan' ? `Bước ${step}/3: ${step === 1 ? 'Chọn nhu cầu' : step === 2 ? 'Khảo sát' : 'Phân tích'}` : 'Chế độ Roleplay (Luyện tập)'}
+                        </p>
                     </div>
                 </div>
                 {/* Mode Toggle */}
                 <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-lg flex text-xs font-bold">
                     <button onClick={() => setMode('plan')} className={`px-3 py-1.5 rounded-md transition ${mode === 'plan' ? 'bg-white dark:bg-gray-600 shadow text-pru-red dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Hoạch định</button>
-                    <button onClick={() => { setMode('chat'); if (messages.length === 0) handleStartChat(); }} className={`px-3 py-1.5 rounded-md transition ${mode === 'chat' ? 'bg-white dark:bg-gray-600 shadow text-purple-600 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400'}`}>Roleplay</button>
+                    <button onClick={() => setMode('chat')} className={`px-3 py-1.5 rounded-md transition ${mode === 'chat' ? 'bg-white dark:bg-gray-600 shadow text-purple-600 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400'}`}>Roleplay</button>
                 </div>
             </div>
 
@@ -525,55 +590,150 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                         {step === 3 && renderStep3()}
                     </>
                 ) : (
-                    // CHAT INTERFACE (Kept concise as per requirement to not modify unless needed, but included for completeness of page)
+                    // --- ROLEPLAY INTERFACE ---
                     <div className="h-full flex flex-col bg-white dark:bg-pru-card rounded-xl shadow overflow-hidden max-w-4xl mx-auto border border-gray-200 dark:border-gray-700 transition-colors">
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10 flex justify-between items-center">
-                            <div className="flex items-center">
-                                <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mr-3"><i className={`fas ${roleplayMode === 'consultant' ? 'fa-user-tie' : 'fa-user-tag'}`}></i></div>
-                                <div><h3 className="font-bold text-gray-800 dark:text-gray-100">Roleplay: {roleplayMode === 'consultant' ? 'Tư vấn mẫu' : 'Luyện tập'}</h3></div>
+                        
+                        {!isChatStarted ? (
+                            // --- SETUP SCREEN ---
+                            <div className="flex-1 p-8 flex flex-col items-center justify-center animate-fade-in">
+                                <div className="max-w-md w-full space-y-6">
+                                    <div className="text-center">
+                                        <div className="w-20 h-20 bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 border-2 border-purple-200 dark:border-purple-800">
+                                            <i className="fas fa-theater-masks"></i>
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Cấu hình Roleplay</h2>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Chọn kịch bản để luyện tập hoặc mô phỏng tình huống thực tế.</p>
+                                    </div>
+
+                                    <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-xl border border-gray-100 dark:border-gray-700 space-y-5">
+                                        {/* 1. CHỌN VAI TRÒ */}
+                                        <div>
+                                            <label className="label-text text-sm uppercase text-gray-500 dark:text-gray-400 font-bold mb-2 block">1. Vai trò của AI</label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button 
+                                                    onClick={() => setRoleplayMode('consultant')}
+                                                    className={`p-3 rounded-lg border-2 text-sm font-bold flex flex-col items-center gap-2 transition ${roleplayMode === 'consultant' ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                                >
+                                                    <i className="fas fa-user-tie text-xl"></i> AI Tư vấn
+                                                    <span className="text-[10px] font-normal opacity-80">(Để bạn học hỏi cách tư vấn)</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => setRoleplayMode('customer')}
+                                                    className={`p-3 rounded-lg border-2 text-sm font-bold flex flex-col items-center gap-2 transition ${roleplayMode === 'customer' ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                                                >
+                                                    <i className="fas fa-user-tag text-xl"></i> AI Khách hàng
+                                                    <span className="text-[10px] font-normal opacity-80">(Để bạn luyện tập xử lý)</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* 2. CHỌN PHONG CÁCH */}
+                                        <div>
+                                            <label className="label-text text-sm uppercase text-gray-500 dark:text-gray-400 font-bold mb-2 block">2. Phong cách giao tiếp</label>
+                                            <div className="flex bg-white dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                                                <button onClick={() => setChatStyle('formal')} className={`flex-1 py-2 text-xs font-bold rounded-md transition ${chatStyle === 'formal' ? 'bg-gray-800 dark:bg-gray-700 text-white shadow' : 'text-gray-500 dark:text-gray-400'}`}>Chuyên nghiệp</button>
+                                                <button onClick={() => setChatStyle('zalo')} className={`flex-1 py-2 text-xs font-bold rounded-md transition ${chatStyle === 'zalo' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 dark:text-gray-400'}`}>Chat Zalo</button>
+                                            </div>
+                                        </div>
+
+                                        {/* 3. CHỌN MỤC TIÊU */}
+                                        <div>
+                                            <label className="label-text text-sm uppercase text-gray-500 dark:text-gray-400 font-bold mb-2 block">3. Mục tiêu cuộc trò chuyện</label>
+                                            <select 
+                                                className="input-field mb-2" 
+                                                value={chatGoal} 
+                                                onChange={(e) => { setChatGoal(e.target.value); setCustomGoal(''); }}
+                                            >
+                                                {GOAL_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                                                <option value="custom">Mục tiêu khác (Nhập tay)...</option>
+                                            </select>
+                                            {(chatGoal === 'custom' || customGoal) && (
+                                                <input 
+                                                    type="text" 
+                                                    className="input-field" 
+                                                    placeholder="Nhập mục tiêu cụ thể..." 
+                                                    value={customGoal} 
+                                                    onChange={(e) => { setCustomGoal(e.target.value); setChatGoal('custom'); }}
+                                                    autoFocus
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        onClick={handleStartChat}
+                                        disabled={isSending}
+                                        className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-purple-700 transition flex items-center justify-center text-lg disabled:opacity-50"
+                                    >
+                                        {isSending ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-play mr-2"></i>} 
+                                        Bắt đầu hội thoại
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <select value={chatStyle} onChange={(e) => setChatStyle(e.target.value as 'zalo' | 'formal')} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-xs font-bold py-1.5 px-3 rounded-lg"><option value="formal">Chuyên nghiệp</option><option value="zalo">Chat Zalo</option></select>
-                                <div className="flex bg-white dark:bg-gray-800 p-1 rounded-lg border border-purple-100 dark:border-gray-600"><button onClick={() => switchRoleplayMode('consultant')} className={`px-3 py-1 rounded text-xs font-bold ${roleplayMode === 'consultant' ? 'bg-purple-100 text-purple-700' : 'text-gray-400'}`}>AI Tư vấn</button><button onClick={() => switchRoleplayMode('customer')} className={`px-3 py-1 rounded text-xs font-bold ${roleplayMode === 'customer' ? 'bg-orange-100 text-orange-700' : 'text-gray-400'}`}>AI Khách</button></div>
-                            </div>
-                        </div>
-                        <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50 dark:bg-gray-900/50">
-                            {messages.map((msg, idx) => (
-                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-2`}>
-                                    <div className={`relative group max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-bl-none'}`}>
-                                        <div dangerouslySetInnerHTML={{ __html: formatMessageText(msg.text) }} />
-                                        {msg.role === 'model' && <button onClick={() => handleCopy(msg.text, idx)} className={`absolute bottom-1 right-1 p-1.5 rounded-md transition-all ${copiedIndex === idx ? 'text-green-500 opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}><i className={`fas ${copiedIndex === idx ? 'fa-check' : 'fa-copy'} text-xs`}></i></button>}
+                        ) : (
+                            // --- CHAT SCREEN ---
+                            <>
+                                <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-purple-50 dark:bg-purple-900/10 flex justify-between items-center shadow-sm z-10">
+                                    <div className="flex items-center overflow-hidden">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 text-white shadow-sm flex-shrink-0 ${roleplayMode === 'consultant' ? 'bg-purple-500' : 'bg-orange-500'}`}>
+                                            <i className={`fas ${roleplayMode === 'consultant' ? 'fa-user-tie' : 'fa-user-tag'}`}></i>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm truncate">
+                                                {roleplayMode === 'consultant' ? 'AI Tư vấn viên' : `Khách: ${customer.fullName}`}
+                                            </h3>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]" title={customGoal || chatGoal}>
+                                                Mục tiêu: {customGoal || chatGoal}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button onClick={handleResetChat} className="text-xs bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 font-bold shadow-sm whitespace-nowrap ml-2">
+                                        <i className="fas fa-stop mr-1 text-red-500"></i> Kết thúc
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50 dark:bg-gray-900/50">
+                                    {messages.map((msg, idx) => (
+                                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-2 group`}>
+                                            <div className={`relative max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-bl-none'}`}>
+                                                <div dangerouslySetInnerHTML={{ __html: formatMessageText(msg.text) }} />
+                                                {msg.role === 'model' && <button onClick={() => handleCopy(msg.text, idx)} className={`absolute bottom-1 right-1 p-1.5 rounded-md transition-all ${copiedIndex === idx ? 'text-green-500 opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}><i className={`fas ${copiedIndex === idx ? 'fa-check' : 'fa-copy'} text-xs`}></i></button>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {isSending && <div className="flex justify-start"><div className="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700"><div className="flex space-x-1"><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div></div></div></div>}
+                                    <div ref={messagesEndRef} />
+                                </div>
+
+                                {/* Quick Replies */}
+                                {quickReplies.length > 0 && !isSending && (
+                                    <div className="px-4 py-2 bg-white dark:bg-pru-card border-t border-gray-100 dark:border-gray-700 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-2">
+                                        <span className="text-[10px] text-gray-400 font-bold uppercase py-1 flex-shrink-0">Gợi ý:</span>
+                                        {quickReplies.map((reply, idx) => (
+                                            <button key={idx} onClick={() => handleSendMessage(reply)} className="inline-block px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 text-xs font-bold border border-blue-100 dark:border-blue-900/50 hover:bg-blue-100 transition whitespace-normal text-left max-w-[200px] truncate">{reply}</button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Coach Suggestions (Only for AI Customer mode) */}
+                                {roleplayMode === 'customer' && !isSending && (
+                                    <div className="px-4 pb-2 bg-white dark:bg-pru-card">
+                                        {suggestions.length > 0 ? (
+                                            <div className="space-y-2 animate-slide-up pt-2 border-t border-dashed border-gray-200 dark:border-gray-700"><p className="text-xs font-bold text-gray-400 uppercase"><i className="fas fa-lightbulb text-yellow-500 mr-1"></i> Gợi ý xử lý từ chối (Coach):</p><div className="grid grid-cols-1 gap-2">{suggestions.map((s, idx) => (<button key={idx} onClick={() => {setInput(s.content); setSuggestions([]);}} className="text-left bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 p-3 rounded-lg border border-orange-100 dark:border-orange-800 transition shadow-sm hover:shadow"><div className="flex items-center gap-2 mb-1"><span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase text-white ${s.type === 'empathy' ? 'bg-pink-500' : s.type === 'logic' ? 'bg-blue-500' : 'bg-green-500'}`}>{s.label}</span></div><p className="text-xs text-gray-700 dark:text-gray-300">{s.content}</p></button>))}</div></div>
+                                        ) : (
+                                            <div className="flex justify-end pt-2"><button onClick={handleGetSuggestions} disabled={isLoadingSuggestions || messages.length < 2} className="text-xs bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 px-3 py-2 rounded-lg hover:bg-orange-100 transition flex items-center gap-2 disabled:opacity-50 border border-orange-100 dark:border-orange-800 font-bold">{isLoadingSuggestions ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-life-ring"></i>} Gợi ý xử lý (Coach)</button></div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="p-4 bg-white dark:bg-pru-card border-t border-gray-100 dark:border-gray-700">
+                                    <div className="relative">
+                                        <input type="text" className="w-full pl-4 pr-12 py-3 bg-gray-100 dark:bg-gray-800 border-none rounded-full focus:ring-2 focus:ring-purple-300 outline-none text-gray-800 dark:text-gray-200 shadow-inner" placeholder={roleplayMode === 'consultant' ? "Nhập câu trả lời..." : "Nhập cách tư vấn..."} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} disabled={isSending} />
+                                        <button onClick={() => handleSendMessage()} disabled={!input.trim() || isSending} className="absolute right-2 top-2 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center hover:bg-purple-700 disabled:opacity-50 shadow-md transition-transform transform active:scale-90"><i className="fas fa-paper-plane text-xs"></i></button>
                                     </div>
                                 </div>
-                            ))}
-                            {isSending && <div className="flex justify-start"><div className="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm"><div className="flex space-x-1"><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div></div></div></div>}
-                            <div ref={messagesEndRef} />
-                        </div>
-                        {/* Quick Replies */}
-                        {quickReplies.length > 0 && !isSending && (
-                            <div className="px-4 py-2 bg-white dark:bg-pru-card border-t border-gray-100 dark:border-gray-700 overflow-x-auto whitespace-nowrap scrollbar-hide">
-                                <span className="text-[10px] text-gray-400 font-bold mr-2 uppercase">Gợi ý:</span>
-                                {quickReplies.map((reply, idx) => (
-                                    <button key={idx} onClick={() => handleSendMessage(reply)} className="inline-block mr-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 text-xs font-bold border border-blue-100 dark:border-blue-900/50 hover:bg-blue-100 transition">{reply}</button>
-                                ))}
-                            </div>
+                            </>
                         )}
-                        {/* Coach Suggestions */}
-                        {roleplayMode === 'customer' && (
-                            <div className="px-4 pb-2 bg-white dark:bg-pru-card">
-                                {suggestions.length > 0 ? (
-                                    <div className="space-y-2 animate-slide-up"><p className="text-xs font-bold text-gray-400 uppercase">Gợi ý xử lý từ chối:</p><div className="grid grid-cols-1 gap-2">{suggestions.map((s, idx) => (<button key={idx} onClick={() => {setInput(s.content); setSuggestions([]);}} className="text-left bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 p-3 rounded-lg border border-orange-100 dark:border-orange-800 transition"><div className="flex items-center gap-2 mb-1"><span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase text-white ${s.type === 'empathy' ? 'bg-pink-500' : s.type === 'logic' ? 'bg-blue-500' : 'bg-green-500'}`}>{s.label}</span></div><p className="text-xs text-gray-700 dark:text-gray-300">{s.content}</p></button>))}</div></div>
-                                ) : (
-                                    <div className="flex justify-end"><button onClick={handleGetSuggestions} disabled={isLoadingSuggestions || messages.length < 2} className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-3 py-2 rounded-lg hover:bg-orange-50 transition flex items-center gap-2 disabled:opacity-50">{isLoadingSuggestions ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-lightbulb"></i>} Gợi ý xử lý (Coach)</button></div>
-                                )}
-                            </div>
-                        )}
-                        <div className="p-4 bg-white dark:bg-pru-card border-t border-gray-100 dark:border-gray-700">
-                            <div className="relative">
-                                <input type="text" className="w-full pl-4 pr-12 py-3 bg-gray-100 dark:bg-gray-800 border-none rounded-full focus:ring-2 focus:ring-purple-300 outline-none text-gray-800 dark:text-gray-200" placeholder={roleplayMode === 'consultant' ? "Nhập câu trả lời..." : "Nhập cách tư vấn..."} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} disabled={isSending} />
-                                <button onClick={() => handleSendMessage()} disabled={!input.trim() || isSending} className="absolute right-2 top-2 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center hover:bg-purple-700 disabled:opacity-50"><i className="fas fa-paper-plane text-xs"></i></button>
-                            </div>
-                        </div>
                     </div>
                 )}
             </div>

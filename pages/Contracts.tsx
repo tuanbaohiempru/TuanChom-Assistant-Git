@@ -273,7 +273,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     };
 
     const handleQuickRenew = async (c: Contract) => {
-        if (!window.confirm(`Xác nhận khách hàng đã đóng phí cho HĐ ${c.contractNumber}? Ngày đóng phí tiếp theo sẽ được tự động cập nhật.`)) return;
+        if (!window.confirm(`Xác nhận khách hàng đã đóng phí cho HĐ ${c.contractNumber}? Ngày đóng phí tiếp theo sẽ được tự động cập nhật và trạng thái sẽ chuyển về Hiệu lực.`)) return;
         const currentNextDate = new Date(c.nextPaymentDate);
         let newDate = new Date(currentNextDate);
         switch (c.paymentFrequency) {
@@ -282,9 +282,16 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             case PaymentFrequency.QUARTERLY: newDate.setMonth(currentNextDate.getMonth() + 3); break;
             case PaymentFrequency.MONTHLY: newDate.setMonth(currentNextDate.getMonth() + 1); break;
         }
-        const updatedContract = { ...c, nextPaymentDate: newDate.toISOString().split('T')[0] };
+        
+        // Auto set status to ACTIVE if renewing
+        const updatedContract = { 
+            ...c, 
+            nextPaymentDate: newDate.toISOString().split('T')[0],
+            status: ContractStatus.ACTIVE 
+        };
+        
         await onUpdate(updatedContract);
-        alert("Đã cập nhật ngày đóng phí thành công!");
+        alert("Đã cập nhật ngày đóng phí và trạng thái thành công!");
     };
 
     const handleAddRider = () => {

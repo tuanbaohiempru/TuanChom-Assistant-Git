@@ -1,21 +1,19 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, CustomerDocument, ContractStatus, Illustration, PaymentFrequency } from '../types';
+import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, Illustration } from '../types';
 import { ConfirmModal, formatDateVN, SearchableCustomerSelect } from '../components/Shared';
-import { uploadFile } from '../services/storage';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
 
 interface CustomersPageProps {
     customers: Customer[];
     contracts: Contract[];
-    illustrations?: Illustration[]; // Optional prop for now to avoid breaking existing
+    illustrations?: Illustration[]; 
     onAdd: (c: Customer) => Promise<void>;
     onUpdate: (c: Customer) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
-    // New Props for Illustration Handling
-    onConvertIllustration?: (ill: Illustration, customerId: string) => Promise<void>;
+    onConvertIllustration?: (ill: Illustration, customerId: string) => Promise<void>; 
     onDeleteIllustration?: (id: string) => Promise<void>;
 }
 
@@ -28,10 +26,12 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false); 
     const [isEditing, setIsEditing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'documents' | 'contracts' | 'illustrations'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'contracts' | 'history'>('info');
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
-    const [isUploading, setIsUploading] = useState(false);
     
+    // Quick Note State
+    const [newNote, setNewNote] = useState('');
+
     // Quick View Contract State
     const [viewContract, setViewContract] = useState<Contract | null>(null);
 
@@ -77,8 +77,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
 
     // Helper to get items for current form customer
     const customerContracts = contracts.filter(c => c.customerId === formData.id);
-    const customerIllustrations = illustrations.filter(ill => ill.customerId === formData.id);
-
+    
     const handleOpenAdd = () => {
         setFormData(defaultCustomer);
         setIsEditing(false);
@@ -93,7 +92,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
             relationships: c.relationships || [],
             documents: c.documents || [],
             health: c.health || defaultCustomer.health,
-            analysis: c.analysis || defaultCustomer.analysis
+            analysis: c.analysis || defaultCustomer.analysis,
+            interactionHistory: c.interactionHistory || []
         };
         setFormData(safeData);
         setIsEditing(true);
@@ -108,27 +108,48 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         setShowModal(false);
     };
 
+    const handleAddNote = () => {
+        if (!newNote.trim()) return;
+        const timestamp = new Date().toLocaleString('vi-VN');
+        const noteEntry = `${timestamp}: ${newNote}`;
+        setFormData(prev => ({
+            ...prev,
+            interactionHistory: [noteEntry, ...prev.interactionHistory]
+        }));
+        setNewNote('');
+    };
+
     const getActiveContractCount = (customerId: string) => {
         return contracts.filter(c => c.customerId === customerId && c.status === 'Đang hiệu lực').length;
     };
 
-    // --- RELATIONSHIP & DOCUMENT LOGIC (Preserved) ---
-    const handleAddRelationship = () => { /* ... existing code ... */ };
-    const handleRemoveRelationship = (index: number) => { /* ... existing code ... */ };
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { /* ... existing code ... */ };
-    const handleDeleteDocument = (index: number) => { /* ... existing code ... */ };
-    const handleBatchSave = async (validCustomers: Customer[]) => { await Promise.all(validCustomers.map(c => onAdd(c))); };
+    // --- RELATIONSHIP LOGIC ---
+    const handleAddRelationship = () => {
+        if (!newRelCustomer) return alert("Vui lòng chọn khách hàng để liên kết");
+        if (newRelCustomer.id === formData.id) return alert("Không thể liên kết với chính mình");
+        
+        const exists = formData.relationships?.some(r => r.relatedCustomerId === newRelCustomer.id);
+        if (exists) return alert("Mối quan hệ này đã tồn tại");
 
-    // --- ILLUSTRATION LOGIC ---
-    const handleConvertIll = async (ill: Illustration) => {
-        if (window.confirm("Bạn có chắc muốn chuyển Bảng minh họa này thành Hợp đồng chính thức?")) {
-            if (onConvertIllustration) {
-                await onConvertIllustration(ill, formData.id);
-                // Switch tab to contracts to see result
-                setActiveTab('contracts');
-            }
-        }
+        const newRel: CustomerRelationship = {
+            relatedCustomerId: newRelCustomer.id,
+            relationship: newRelType
+        };
+
+        setFormData(prev => ({
+            ...prev,
+            relationships: [...(prev.relationships || []), newRel]
+        }));
+        setNewRelCustomer(null);
     };
+
+    const handleRemoveRelationship = (index: number) => {
+        const newRels = [...(formData.relationships || [])];
+        newRels.splice(index, 1);
+        setFormData(prev => ({ ...prev, relationships: newRels }));
+    };
+
+    const handleBatchSave = async (validCustomers: Customer[]) => { await Promise.all(validCustomers.map(c => onAdd(c))); };
 
     return (
         <div className="space-y-6">
@@ -191,11 +212,10 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         
                         <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto bg-white dark:bg-pru-card">
                             <button onClick={() => setActiveTab('info')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Thông tin chung</button>
+                            <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'history' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Lịch sử & Ghi chú</button>
                             <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Sức khỏe</button>
-                            <button onClick={() => setActiveTab('illustrations')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'illustrations' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Minh họa <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full ml-1">{customerIllustrations.length}</span></button>
                             <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Hợp đồng <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
                             <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Gia đình</button>
-                            <button onClick={() => setActiveTab('documents')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'documents' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Tài liệu</button>
                             <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Phân tích</button>
                         </div>
 
@@ -214,107 +234,53 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                 </div>
                             )}
 
-                            {/* TAB: ILLUSTRATIONS (Updated with Detail Breakdown) */}
-                            {activeTab === 'illustrations' && (
+                            {/* TAB: HISTORY */}
+                            {activeTab === 'history' && (
                                 <div className="space-y-4">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <h3 className="font-bold text-gray-800 dark:text-gray-100">Bảng minh họa đã lưu</h3>
-                                        <button onClick={() => navigate('/product-advisory')} className="text-xs bg-pru-red text-white px-3 py-1.5 rounded font-bold hover:bg-red-700">
-                                            + Tạo mới bằng AI
-                                        </button>
+                                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                                        <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Thêm ghi chú mới</h4>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                className="input-field flex-1" 
+                                                placeholder="VD: Khách hẹn chiều thứ 7 cafe..." 
+                                                value={newNote}
+                                                onChange={(e) => setNewNote(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+                                            />
+                                            <button 
+                                                onClick={handleAddNote}
+                                                disabled={!newNote.trim()}
+                                                className="bg-pru-red text-white px-4 rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 transition"
+                                            >
+                                                Lưu
+                                            </button>
+                                        </div>
                                     </div>
-                                    {customerIllustrations.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {customerIllustrations.map(ill => (
-                                                <div key={ill.id} className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-xl p-4 relative group transition-all hover:shadow-md">
-                                                    
-                                                    {/* Header: Title & Status */}
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <div>
-                                                            <div className="font-bold text-yellow-800 dark:text-yellow-500 text-lg">{ill.mainProduct.productName}</div>
-                                                            <p className="text-xs text-gray-500">Ngày tạo: {formatDateVN(ill.createdAt.split('T')[0])}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="font-bold text-lg text-pru-red">{ill.totalFee.toLocaleString()} đ</div>
-                                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${ill.status === 'CONVERTED' ? 'bg-green-200 text-green-800' : 'bg-white text-gray-500 border'}`}>
-                                                                {ill.status === 'CONVERTED' ? 'Đã ký HĐ' : 'Dự thảo'}
-                                                            </span>
-                                                        </div>
+
+                                    <div className="space-y-3">
+                                        <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300">Lịch sử tương tác</h4>
+                                        {formData.interactionHistory && formData.interactionHistory.length > 0 ? (
+                                            formData.interactionHistory.map((item, idx) => (
+                                                <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700 text-sm shadow-sm flex items-start gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 shrink-0">
+                                                        <i className="fas fa-history text-xs"></i>
                                                     </div>
-                                                    
-                                                    {/* Detail Breakdown Table */}
-                                                    <div className="bg-white dark:bg-gray-800 rounded-lg border border-yellow-100 dark:border-gray-700 overflow-hidden text-sm">
-                                                        {/* Header Row */}
-                                                        <div className="grid grid-cols-12 gap-2 bg-yellow-50/50 dark:bg-gray-700/50 p-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                                                            <div className="col-span-6">Quyền lợi bảo vệ</div>
-                                                            <div className="col-span-3 text-right">STBH / Gói</div>
-                                                            <div className="col-span-3 text-right">Phí dự kiến</div>
-                                                        </div>
-
-                                                        {/* Main Product */}
-                                                        <div className="grid grid-cols-12 gap-2 p-2 border-b border-gray-100 dark:border-gray-700">
-                                                            <div className="col-span-6 font-bold text-gray-800 dark:text-gray-200">
-                                                                <span className="text-blue-600 mr-1 text-xs bg-blue-50 px-1 rounded">[Chính]</span> {ill.mainProduct.productName}
-                                                            </div>
-                                                            <div className="col-span-3 text-right font-medium text-gray-800 dark:text-gray-300">{ill.mainProduct.sumAssured.toLocaleString()}</div>
-                                                            <div className="col-span-3 text-right text-pru-red dark:text-red-400 font-bold">{ill.mainProduct.fee.toLocaleString()}</div>
-                                                        </div>
-
-                                                        {/* Riders Loop */}
-                                                        {ill.riders.map((r, idx) => (
-                                                            <div key={idx} className="grid grid-cols-12 gap-2 p-2 border-b border-gray-50 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
-                                                                <div className="col-span-6 text-gray-600 dark:text-gray-400 pl-6 text-xs relative">
-                                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-300">└</span>
-                                                                    {r.productName}
-                                                                </div>
-                                                                <div className="col-span-3 text-right text-gray-600 dark:text-gray-400 text-xs font-medium">
-                                                                    {r.attributes?.plan ? r.attributes.plan : r.sumAssured.toLocaleString()}
-                                                                </div>
-                                                                <div className="col-span-3 text-right text-gray-500 dark:text-gray-400 text-xs">{r.fee.toLocaleString()}</div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                    
-                                                    {/* Reason box */}
-                                                    {ill.reasoning && (
-                                                        <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded text-xs text-gray-600 dark:text-gray-300 italic border border-dashed border-gray-200 dark:border-gray-700">
-                                                            <i className="fas fa-quote-left text-gray-300 mr-2"></i>{ill.reasoning}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Actions */}
-                                                    {ill.status !== 'CONVERTED' && (
-                                                        <div className="mt-3 flex justify-end gap-2 pt-2">
-                                                            <button 
-                                                                onClick={() => onDeleteIllustration && onDeleteIllustration(ill.id)}
-                                                                className="px-3 py-1.5 bg-white border border-gray-300 text-red-500 text-xs font-bold rounded hover:bg-red-50"
-                                                            >
-                                                                <i className="fas fa-trash"></i>
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleConvertIll(ill)}
-                                                                className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700 shadow-sm flex items-center"
-                                                            >
-                                                                <i className="fas fa-file-signature mr-1"></i> Chuyển thành Hợp đồng
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    <div className="text-gray-600 dark:text-gray-300">{item}</div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-10 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-                                            <i className="fas fa-lightbulb text-gray-300 dark:text-gray-600 text-4xl mb-3"></i>
-                                            <p className="text-gray-500 dark:text-gray-400">Chưa có bảng minh họa nào.</p>
-                                        </div>
-                                    )}
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-8 text-gray-400 dark:text-gray-500 italic border border-dashed rounded-lg">
+                                                Chưa có lịch sử tương tác nào.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
-                            {/* TAB: HEALTH (Preserved content) */}
+                            {/* TAB: HEALTH */}
                             {activeTab === 'health' && (
                                 <div className="space-y-4">
-                                    {/* ... existing health content ... */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="label-text">Chiều cao (cm)</label><input type="number" className="input-field" value={formData.health.height} onChange={e => setFormData({...formData, health: {...formData.health, height: Number(e.target.value)}})} /></div>
                                         <div><label className="label-text">Cân nặng (kg)</label><input type="number" className="input-field" value={formData.health.weight} onChange={e => setFormData({...formData, health: {...formData.health, weight: Number(e.target.value)}})} /></div>
@@ -324,10 +290,83 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                 </div>
                             )}
 
-                            {/* OTHER TABS (Placeholder for brevity, assuming original logic is kept or user can fill in) */}
+                            {/* TAB: FAMILY (Implemented) */}
+                            {activeTab === 'family' && (
+                                <div className="space-y-6">
+                                    {/* Add Relationship Form */}
+                                    <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                                        <h4 className="text-sm font-bold text-purple-800 dark:text-purple-300 mb-3 flex items-center">
+                                            <i className="fas fa-users mr-2"></i> Thêm người thân
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                                            <div className="md:col-span-1">
+                                                <SearchableCustomerSelect 
+                                                    customers={customers} 
+                                                    value={newRelCustomer?.fullName || ''} 
+                                                    onChange={setNewRelCustomer}
+                                                    label="Chọn người thân (Đã có trong DS)"
+                                                    placeholder="Tìm tên..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Mối quan hệ</label>
+                                                <select className="input-field" value={newRelType} onChange={(e) => setNewRelType(e.target.value as RelationshipType)}>
+                                                    {Object.values(RelationshipType).map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <button 
+                                                onClick={handleAddRelationship} 
+                                                className="bg-purple-600 text-white py-2.5 px-4 rounded-lg font-bold hover:bg-purple-700 shadow-sm transition"
+                                            >
+                                                <i className="fas fa-plus mr-1"></i> Thêm
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-2 italic">* Nếu người thân chưa có trong danh sách, vui lòng tạo khách hàng mới trước.</p>
+                                    </div>
+
+                                    {/* Relationships List */}
+                                    <div className="space-y-3">
+                                        <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300">Danh sách người thân</h4>
+                                        {formData.relationships && formData.relationships.length > 0 ? (
+                                            <div className="grid grid-cols-1 gap-3">
+                                                {formData.relationships.map((rel, idx) => {
+                                                    const relCustomer = customers.find(c => c.id === rel.relatedCustomerId);
+                                                    return (
+                                                        <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex justify-between items-center shadow-sm">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300 font-bold">
+                                                                    {relCustomer?.fullName.charAt(0)}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-gray-800 dark:text-gray-200">{relCustomer?.fullName || 'Không xác định'}</div>
+                                                                    <div className="text-xs text-purple-600 dark:text-purple-400 font-medium bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded inline-block mt-0.5">{rel.relationship}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="text-right mr-2 hidden sm:block">
+                                                                    <div className="text-xs text-gray-500">{relCustomer?.phone}</div>
+                                                                    <div className="text-[10px] text-gray-400">{relCustomer?.dob ? formatDateVN(relCustomer.dob) : ''}</div>
+                                                                </div>
+                                                                <button onClick={() => handleRemoveRelationship(idx)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition">
+                                                                    <i className="fas fa-trash-alt"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-8 text-gray-400 dark:text-gray-500 italic border border-dashed rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                                Chưa có thông tin gia đình.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB: CONTRACTS */}
                             {activeTab === 'contracts' && (
                                 <div className="space-y-4">
-                                    {/* ... existing contracts list ... */}
                                     {customerContracts.length > 0 ? (
                                         <div className="space-y-3">
                                             {customerContracts.map(c => (

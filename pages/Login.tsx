@@ -1,13 +1,12 @@
 
 import React, { useState } from 'react';
-import { loginWithGoogle, loginWithEmail, registerWithEmail } from '../services/auth';
+import { loginWithGoogle, loginWithEmail } from '../services/auth';
 
 const LoginPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     
     // Email/Pass State
-    const [isRegistering, setIsRegistering] = useState(false); // Toggle Login/Register mode
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -50,11 +49,7 @@ const LoginPage: React.FC = () => {
         setError('');
         
         try {
-            if (isRegistering) {
-                await registerWithEmail(email, password);
-            } else {
-                await loginWithEmail(email, password);
-            }
+            await loginWithEmail(email, password);
             // Auth listener in App.tsx handles redirect
         } catch (err: any) {
             console.error("Auth Error", err);
@@ -65,12 +60,18 @@ const LoginPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4 relative overflow-hidden">
-            {/* Background Decoration */}
-            <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-r from-pru-red to-red-700 transform skew-y-[-6deg] origin-top-left -translate-y-20 z-0"></div>
+            {/* Background Decoration - Fixed Design */}
+            <div 
+                className="absolute top-0 left-0 w-full h-[60vh] bg-gradient-to-br from-pru-red to-red-800 z-0 shadow-xl"
+                style={{ clipPath: 'polygon(0 0, 100% 0, 100% 85%, 0 100%)' }}
+            ></div>
             
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative z-10 animate-fade-in border border-gray-100">
+            {/* Optional: Add a subtle texture or secondary shape for depth */}
+            <div className="absolute top-10 right-10 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl z-0 pointer-events-none"></div>
+            
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative z-10 animate-fade-in border border-gray-100 mt-10">
                 <div className="text-center mb-6">
-                    <div className="w-16 h-16 bg-red-50 text-pru-red rounded-full flex items-center justify-center mx-auto mb-3 text-2xl border-4 border-white shadow-lg">
+                    <div className="w-20 h-20 bg-red-50 text-pru-red rounded-full flex items-center justify-center mx-auto mb-4 text-3xl border-4 border-white shadow-lg relative -mt-16">
                         <i className="fas fa-shield-alt"></i>
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800 mb-1">TuanChom</h1>
@@ -132,22 +133,10 @@ const LoginPage: React.FC = () => {
                             {isLoading ? (
                                 <i className="fas fa-spinner fa-spin"></i>
                             ) : (
-                                <span>{isRegistering ? 'Đăng ký tài khoản' : 'Đăng nhập'}</span>
+                                <span>Đăng nhập</span>
                             )}
                         </button>
                     </form>
-
-                    <div className="flex justify-center">
-                        <button 
-                            type="button"
-                            onClick={() => { setError(''); setIsRegistering(!isRegistering); }}
-                            className="text-xs text-blue-600 hover:underline font-medium"
-                        >
-                            {isRegistering 
-                                ? 'Đã có tài khoản? Đăng nhập ngay' 
-                                : 'Chưa có tài khoản? Đăng ký mới'}
-                        </button>
-                    </div>
 
                     {/* Divider */}
                     <div className="relative py-2">
