@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, Illustration } from '../types';
-import { ConfirmModal, formatDateVN, SearchableCustomerSelect } from '../components/Shared';
+import { ConfirmModal, formatDateVN, SearchableCustomerSelect, CurrencyInput } from '../components/Shared';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
 
@@ -56,7 +56,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         health: { medicalHistory: '', height: 165, weight: 60, habits: '' },
         analysis: {
             childrenCount: 0,
-            incomeEstimate: '',
+            incomeEstimate: '', // Will store as string but represent a number
             financialStatus: FinancialStatus.STABLE,
             insuranceKnowledge: '',
             previousExperience: '',
@@ -102,9 +102,69 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         setShowModal(true);
     };
 
+    // --- HELPER: RECIPROCAL RELATIONSHIP LOGIC ---
+    const getReciprocalType = (type: RelationshipType): RelationshipType => {
+        switch (type) {
+            case RelationshipType.SPOUSE: return RelationshipType.SPOUSE;
+            // Nếu tôi thêm B là Bố/Mẹ (PARENT), thì B sẽ thấy tôi là Con (CHILD)
+            case RelationshipType.PARENT: return RelationshipType.CHILD;
+            // Nếu tôi thêm B là Con (CHILD), thì B sẽ thấy tôi là Bố/Mẹ (PARENT)
+            case RelationshipType.CHILD: return RelationshipType.PARENT;
+            case RelationshipType.SIBLING: return RelationshipType.SIBLING;
+            default: return RelationshipType.OTHER;
+        }
+    };
+
     const handleSave = async () => {
         if (!formData.fullName || !formData.phone) return alert("Vui lòng nhập Họ tên và SĐT");
-        isEditing ? await onUpdate(formData) : await onAdd(formData);
+        
+        if (isEditing) {
+            // 1. Lưu thông tin khách hàng hiện tại
+            await onUpdate(formData);
+
+            // 2. Tự động cập nhật mối quan hệ 2 chiều cho các khách hàng liên quan
+            if (formData.relationships && formData.relationships.length > 0) {
+                const updatePromises = formData.relationships.map(async (rel) => {
+                    const targetCustomer = customers.find(c => c.id === rel.relatedCustomerId);
+                    
+                    if (targetCustomer) {
+                        const reciprocalType = getReciprocalType(rel.relationship);
+                        const existingLinkIndex = targetCustomer.relationships?.findIndex(r => r.relatedCustomerId === formData.id);
+                        
+                        let shouldUpdate = false;
+                        let newRelationships = [...(targetCustomer.relationships || [])];
+
+                        if (existingLinkIndex !== undefined && existingLinkIndex >= 0) {
+                            // Nếu đã có liên kết, kiểm tra xem loại quan hệ có khớp không, nếu sai thì sửa lại
+                            if (newRelationships[existingLinkIndex].relationship !== reciprocalType) {
+                                newRelationships[existingLinkIndex] = { 
+                                    ...newRelationships[existingLinkIndex], 
+                                    relationship: reciprocalType 
+                                };
+                                shouldUpdate = true;
+                            }
+                        } else {
+                            // Nếu chưa có liên kết, thêm mới vào
+                            newRelationships.push({ 
+                                relatedCustomerId: formData.id, 
+                                relationship: reciprocalType 
+                            });
+                            shouldUpdate = true;
+                        }
+
+                        if (shouldUpdate) {
+                            await onUpdate({ ...targetCustomer, relationships: newRelationships });
+                        }
+                    }
+                });
+                
+                await Promise.all(updatePromises);
+            }
+        } else {
+            // Trường hợp thêm mới: Chưa có ID nên chưa thể tạo liên kết ngược ngay lập tức
+            await onAdd(formData);
+        }
+        
         setShowModal(false);
     };
 
@@ -188,6 +248,15 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         </div>
                         <div className="p-5 space-y-3 flex-1">
                             <div className="flex items-center text-sm text-gray-600 dark:text-gray-300"><i className="fas fa-phone-alt w-5 text-gray-400 text-xs"></i><span>{c.phone}</span></div>
+                            {/* Income Display */}
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                                <i className="fas fa-money-bill-wave w-5 text-gray-400 text-xs"></i>
+                                <span>
+                                    {Number(c.analysis?.incomeEstimate) > 0 
+                                        ? `${Number(c.analysis.incomeEstimate).toLocaleString()} đ/tháng` 
+                                        : 'Chưa cập nhật thu nhập'}
+                                </span>
+                            </div>
                             <div className="flex items-center text-sm text-gray-600 dark:text-gray-300"><i className="fas fa-file-contract w-5 text-gray-400 text-xs"></i><span>{getActiveContractCount(c.id)} HĐ hiệu lực</span></div>
                         </div>
                         <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl border-t border-gray-100 dark:border-gray-800 flex justify-between items-center gap-2">
@@ -263,7 +332,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                         {formData.interactionHistory && formData.interactionHistory.length > 0 ? (
                                             formData.interactionHistory.map((item, idx) => (
                                                 <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700 text-sm shadow-sm flex items-start gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 shrink-0">
+                                                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-50 shrink-0">
                                                         <i className="fas fa-history text-xs"></i>
                                                     </div>
                                                     <div className="text-gray-600 dark:text-gray-300">{item}</div>
@@ -388,7 +457,21 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                             
                             {activeTab === 'analysis' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="label-text">Thu nhập ước tính</label><input className="input-field" value={formData.analysis.incomeEstimate} onChange={e => setFormData({...formData, analysis: {...formData.analysis, incomeEstimate: e.target.value}})} /></div>
+                                    <div>
+                                        <label className="label-text">Thu nhập bình quân (VNĐ/Tháng)</label>
+                                        <CurrencyInput
+                                            className="input-field font-bold text-green-600"
+                                            value={Number(formData.analysis.incomeEstimate) || 0}
+                                            onChange={(v) => setFormData({
+                                                ...formData,
+                                                analysis: {
+                                                    ...formData.analysis,
+                                                    incomeEstimate: v.toString()
+                                                }
+                                            })}
+                                            placeholder="Nhập số tiền..."
+                                        />
+                                    </div>
                                     <div><label className="label-text">Số con</label><input type="number" className="input-field" value={formData.analysis.childrenCount} onChange={e => setFormData({...formData, analysis: {...formData.analysis, childrenCount: Number(e.target.value)}})} /></div>
                                     <div><label className="label-text">Tài chính</label><select className="input-field" value={formData.analysis.financialStatus} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, financialStatus: e.target.value}})}>{Object.values(FinancialStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
                                     <div><label className="label-text">Sẵn sàng</label><select className="input-field" value={formData.analysis.readiness} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, readiness: e.target.value}})}>{Object.values(ReadinessLevel).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
