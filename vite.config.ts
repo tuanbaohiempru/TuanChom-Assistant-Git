@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   // SECURE FIX: Remove API_KEY from the environment variables exposed to the client
-  // Only expose safe variables (like FIREBASE config)
+  // Only expose safe variables (like FIREBASE config) Tuan
   const { API_KEY, ...safeEnv } = env;
 
   return {

@@ -15,7 +15,7 @@ const LoginPage: React.FC = () => {
         switch (errCode) {
             case 'auth/configuration-not-found': return 'Lỗi: Chưa bật Provider trong Firebase Console.';
             case 'auth/popup-closed-by-user': return 'Đã hủy đăng nhập Google.';
-            case 'auth/unauthorized-domain': return `Lỗi: Tên miền '${window.location.hostname}' chưa được cấp quyền.`;
+            case 'auth/unauthorized-domain': return `CHẶN TÊN MIỀN: Hãy vào Firebase Console -> Authentication -> Settings -> Authorized Domains và thêm tên miền: "${window.location.hostname}"`;
             case 'auth/invalid-email': return 'Email không hợp lệ.';
             case 'auth/user-disabled': return 'Tài khoản này đã bị vô hiệu hóa.';
             case 'auth/user-not-found': return 'Không tìm thấy tài khoản với email này.';
@@ -33,6 +33,7 @@ const LoginPage: React.FC = () => {
         try {
             await loginWithGoogle();
         } catch (err: any) {
+            console.error("Auth Error", err);
             setError(mapAuthError(err.code));
             setIsLoading(false);
         }
@@ -56,6 +57,7 @@ const LoginPage: React.FC = () => {
             }
             // Auth listener in App.tsx handles redirect
         } catch (err: any) {
+            console.error("Auth Error", err);
             setError(mapAuthError(err.code));
             setIsLoading(false);
         }
@@ -83,8 +85,10 @@ const LoginPage: React.FC = () => {
                                 <i className="fas fa-exclamation-circle mr-2"></i> Lỗi
                             </div>
                             <p>{error}</p>
-                            {error.includes('Provider') && (
-                                <p className="mt-1 italic opacity-80">Gợi ý: Vào Firebase Console -&gt; Authentication -&gt; Sign-in method -&gt; Bật Email/Password.</p>
+                            {error.includes('Settings') && (
+                                <button onClick={() => window.open('https://console.firebase.google.com/', '_blank')} className="mt-2 text-blue-600 underline text-left">
+                                    Mở Firebase Console ngay &rarr;
+                                </button>
                             )}
                         </div>
                     )}
