@@ -28,8 +28,8 @@ exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request)
     try {
         const ai = new GoogleGenAI({ apiKey: API_KEY });
         
-        // Sử dụng gemini-2.0-flash-exp nếu được yêu cầu, nếu không thì fallback
-        const targetModel = model || 'gemini-2.0-flash-exp'; 
+        // Sử dụng gemini-1.5-flash làm mặc định để hỗ trợ Multimodal (PDF, Image) tốt nhất với chi phí thấp
+        const targetModel = model || 'gemini-1.5-flash'; 
 
         let resultText = '';
 
@@ -37,7 +37,7 @@ exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request)
             const chat = ai.chats.create({
                 model: targetModel,
                 config: {
-                    systemInstruction: systemInstruction,
+                    systemInstruction: systemInstruction, // systemInstruction có thể là String hoặc Array of Parts (chứa PDF)
                     ...config
                 },
                 history: history || []

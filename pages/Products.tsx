@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Product, ProductType, Gender, ProductStatus, ProductCalculationType, FormulaType } from '../types';
 import { ConfirmModal, CurrencyInput } from '../components/Shared';
-import { extractTextFromPdf } from '../services/geminiService';
+import { uploadFile } from '../services/storage'; // Dùng uploadFile thay vì extractText
 import { calculateProductFee } from '../services/productCalculator';
 import { HTVKPlan, HTVKPackage } from '../data/pruHanhTrangVuiKhoe';
 
@@ -47,7 +47,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
     // Upload State
     const [excelColumns, setExcelColumns] = useState<string[]>([]);
     const [previewData, setPreviewData] = useState<any[]>([]);
-    const [isExtracting, setIsExtracting] = useState(false);
+    const [isUploadingPdf, setIsUploadingPdf] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
 
     // --- TEST CALCULATOR STATE (SANDBOX) ---
@@ -112,12 +112,26 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
         setShowModal(false);
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Updated Handler: Upload to Storage instead of extracting text
+    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setIsExtracting(true);
-        try { const text = await extractTextFromPdf(file); setFormData(prev => ({ ...prev, rulesAndTerms: text })); } catch (error) { alert("Lỗi: " + error); }
-        setIsExtracting(false);
+        
+        setIsUploadingPdf(true);
+        try {
+            const url = await uploadFile(file, 'product-docs');
+            setFormData(prev => ({ 
+                ...prev, 
+                pdfUrl: url,
+                // Optional: Clear old extracted text to avoid confusion, or keep as fallback
+                rulesAndTerms: prev.rulesAndTerms || `Tài liệu gốc đã được tải lên: ${file.name}`
+            }));
+            alert("Đã tải tài liệu lên thành công! AI sẽ đọc trực tiếp file này.");
+        } catch (error) {
+            alert("Lỗi upload: " + error);
+        } finally {
+            setIsUploadingPdf(false);
+        }
     };
 
     const handleRateTableUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,9 +158,8 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
 
     // --- TEST SANDBOX CALCULATION ---
     const runTestCalculation = () => {
-        // Pass the CURRENT formData as the 'product' to simulate the engine
         const fee = calculateProductFee({
-            product: formData, // <--- Key magic: Use current editing state
+            product: formData, 
             calculationType: formData.calculationType || ProductCalculationType.FIXED,
             sumAssured: testInputs.sumAssured,
             age: testInputs.age,
@@ -214,6 +227,11 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                         </div>
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-bold text-pru-red dark:text-red-400 uppercase tracking-wide">{p.type}</span>
+                            {p.pdfUrl && (
+                                <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded flex items-center" title="Đã có tài liệu gốc (PDF)">
+                                    <i className="fas fa-file-pdf mr-1"></i> Doc
+                                </span>
+                            )}
                             {p.rateTable && p.rateTable.length > 0 && (
                                 <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded" title="Đã có biểu phí động">
                                     <i className="fas fa-table"></i>
@@ -263,20 +281,37 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                         </select>
                                     </div>
                                     <div><label className="label-text">Mô tả ngắn</label><textarea className="input-field" rows={2} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
-                                    <div>
-                                        <div className="flex justify-between items-center mb-1">
-                                            <label className="label-text">Quy tắc & Điều khoản (Cho AI học)</label>
-                                            <label className="cursor-pointer bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 px-2 py-1 rounded text-xs hover:bg-green-100 dark:hover:bg-green-900/30 flex items-center transition border border-green-200 dark:border-green-800">
-                                                <i className="fas fa-file-pdf mr-1"></i>{isExtracting ? 'Đang đọc...' : 'Trích xuất PDF'}
-                                                <input type="file" className="hidden" accept="application/pdf" onChange={handleFileUpload} disabled={isExtracting} />
+                                    
+                                    {/* PDF UPLOAD SECTION */}
+                                    <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-lg border border-red-100 dark:border-red-900/30">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="label-text text-red-800 dark:text-red-300 mb-0 flex items-center">
+                                                <i className="fas fa-book mr-2"></i> Tài liệu Quy tắc & Điều khoản (PDF)
+                                            </label>
+                                            <label className={`cursor-pointer bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center transition shadow-sm ${isUploadingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                {isUploadingPdf ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-cloud-upload-alt mr-1"></i>}
+                                                {isUploadingPdf ? 'Đang tải...' : 'Upload File PDF'}
+                                                <input type="file" className="hidden" accept="application/pdf" onChange={handlePdfUpload} disabled={isUploadingPdf} />
                                             </label>
                                         </div>
-                                        <textarea className="input-field font-mono text-xs" rows={6} value={formData.rulesAndTerms} onChange={e => setFormData({...formData, rulesAndTerms: e.target.value})} placeholder="Paste nội dung chi tiết điều khoản vào đây..." />
+                                        
+                                        {formData.pdfUrl ? (
+                                            <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded border border-red-200 dark:border-red-800/50">
+                                                <a href={formData.pdfUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate flex-1 mr-2 flex items-center">
+                                                    <i className="fas fa-file-pdf text-red-500 mr-2 text-lg"></i>
+                                                    Xem tài liệu hiện tại
+                                                </a>
+                                                <button onClick={() => setFormData({...formData, pdfUrl: ''})} className="text-gray-400 hover:text-red-500 px-2"><i className="fas fa-times"></i></button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">Chưa có tài liệu. Upload PDF để AI học và trả lời chính xác hơn.</p>
+                                        )}
+                                        <p className="text-[10px] text-red-400 mt-2">* Lưu ý: AI sẽ đọc trực tiếp nội dung từ file PDF này khi tư vấn.</p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* TAB RATES */}
+                            {/* TAB RATES (Giữ nguyên) */}
                             {activeTab === 'rates' && (
                                 <div className="space-y-6">
                                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
@@ -477,7 +512,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                 </div>
             )}
 
-            {/* GLOBAL CALCULATOR MODAL (Unchanged Logic, just rendering) */}
+            {/* GLOBAL CALCULATOR MODAL */}
             {showCalc && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
                     <div className="bg-white dark:bg-pru-card rounded-xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-700 transition-colors">
