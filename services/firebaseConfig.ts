@@ -10,7 +10,8 @@ const firebaseConfig = {
   apiKey: "AIzaSyBucXUKg5bsEv7mmVA2q3t5g2zzKvpA7qQ",
   authDomain: "studio-5841594141-93fc7.firebaseapp.com",
   projectId: "studio-5841594141-93fc7",
-  storageBucket: "studio-5841594141-93fc7.firebasestorage.app",
+  // Fix: Storage Bucket mặc định thường có đuôi .appspot.com
+  storageBucket: "studio-5841594141-93fc7.appspot.com", 
   messagingSenderId: "148389290808",
   appId: "1:148389290808:web:33a5e679e7b0d54324d7cd"
 };
