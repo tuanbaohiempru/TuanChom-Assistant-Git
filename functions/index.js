@@ -28,8 +28,8 @@ exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request)
     try {
         const ai = new GoogleGenAI({ apiKey: API_KEY });
         
-        // Sử dụng gemini-1.5-flash làm mặc định để hỗ trợ Multimodal (PDF, Image) tốt nhất với chi phí thấp
-        const targetModel = model || 'gemini-1.5-flash'; 
+        // Cập nhật: Sử dụng gemini-3-flash-preview làm mặc định (thay cho 1.5-flash cũ)
+        const targetModel = model || 'gemini-3-flash-preview'; 
 
         let resultText = '';
 

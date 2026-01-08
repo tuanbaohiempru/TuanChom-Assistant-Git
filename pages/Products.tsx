@@ -225,16 +225,16 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                 <button onClick={() => setDeleteConfirm({ isOpen: true, id: p.id, name: p.name })} className="text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded transition"><i className="fas fa-trash"></i></button>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
                             <span className="text-xs font-bold text-pru-red dark:text-red-400 uppercase tracking-wide">{p.type}</span>
                             {p.pdfUrl && (
-                                <span className="text-[10px] bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded flex items-center" title="Đã có tài liệu gốc (PDF)">
-                                    <i className="fas fa-file-pdf mr-1"></i> Doc
+                                <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded flex items-center font-bold shadow-sm" title="Sản phẩm này đã có tài liệu điều khoản PDF">
+                                    <i className="fas fa-check-circle mr-1"></i> Đã có điều khoản
                                 </span>
                             )}
                             {p.rateTable && p.rateTable.length > 0 && (
-                                <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded" title="Đã có biểu phí động">
-                                    <i className="fas fa-table"></i>
+                                <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded flex items-center font-bold shadow-sm" title="Đã có biểu phí động">
+                                    <i className="fas fa-calculator mr-1"></i> Có biểu phí
                                 </span>
                             )}
                         </div>
@@ -283,30 +283,33 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                     <div><label className="label-text">Mô tả ngắn</label><textarea className="input-field" rows={2} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
                                     
                                     {/* PDF UPLOAD SECTION */}
-                                    <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-lg border border-red-100 dark:border-red-900/30">
+                                    <div className={`p-4 rounded-lg border transition-colors ${formData.pdfUrl ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30' : 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30'}`}>
                                         <div className="flex justify-between items-center mb-2">
-                                            <label className="label-text text-red-800 dark:text-red-300 mb-0 flex items-center">
-                                                <i className="fas fa-book mr-2"></i> Tài liệu Quy tắc & Điều khoản (PDF)
+                                            <label className={`label-text mb-0 flex items-center font-bold ${formData.pdfUrl ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+                                                <i className={`fas ${formData.pdfUrl ? 'fa-check-circle' : 'fa-book'} mr-2`}></i> 
+                                                {formData.pdfUrl ? 'Đã có tài liệu điều khoản' : 'Tài liệu Quy tắc & Điều khoản (PDF)'}
                                             </label>
-                                            <label className={`cursor-pointer bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-700 flex items-center transition shadow-sm ${isUploadingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold flex items-center transition shadow-sm ${formData.pdfUrl ? 'bg-white text-green-700 border border-green-200 hover:bg-green-50' : 'bg-red-600 text-white hover:bg-red-700'} ${isUploadingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                                 {isUploadingPdf ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-cloud-upload-alt mr-1"></i>}
-                                                {isUploadingPdf ? 'Đang tải...' : 'Upload File PDF'}
+                                                {isUploadingPdf ? 'Đang tải...' : (formData.pdfUrl ? 'Tải lại file khác' : 'Upload File PDF')}
                                                 <input type="file" className="hidden" accept="application/pdf" onChange={handlePdfUpload} disabled={isUploadingPdf} />
                                             </label>
                                         </div>
                                         
                                         {formData.pdfUrl ? (
-                                            <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded border border-red-200 dark:border-red-800/50">
-                                                <a href={formData.pdfUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate flex-1 mr-2 flex items-center">
+                                            <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded border border-green-200 dark:border-green-800/50">
+                                                <a href={formData.pdfUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate flex-1 mr-2 flex items-center font-medium">
                                                     <i className="fas fa-file-pdf text-red-500 mr-2 text-lg"></i>
-                                                    Xem tài liệu hiện tại
+                                                    Xem file hiện tại
                                                 </a>
-                                                <button onClick={() => setFormData({...formData, pdfUrl: ''})} className="text-gray-400 hover:text-red-500 px-2"><i className="fas fa-times"></i></button>
+                                                <button onClick={() => setFormData({...formData, pdfUrl: ''})} className="text-gray-400 hover:text-red-500 px-2" title="Xóa file"><i className="fas fa-trash-alt"></i></button>
                                             </div>
                                         ) : (
                                             <p className="text-xs text-gray-500 dark:text-gray-400 italic">Chưa có tài liệu. Upload PDF để AI học và trả lời chính xác hơn.</p>
                                         )}
-                                        <p className="text-[10px] text-red-400 mt-2">* Lưu ý: AI sẽ đọc trực tiếp nội dung từ file PDF này khi tư vấn.</p>
+                                        <p className={`text-[10px] mt-2 italic ${formData.pdfUrl ? 'text-green-600 dark:text-green-400' : 'text-red-400'}`}>
+                                            * Lưu ý: AI sẽ đọc trực tiếp nội dung từ file PDF này khi tư vấn.
+                                        </p>
                                     </div>
                                 </div>
                             )}

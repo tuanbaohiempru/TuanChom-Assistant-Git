@@ -67,7 +67,7 @@ export const generateFinancialAdvice = async (
 
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt
     });
 };
@@ -126,21 +126,27 @@ export const chatWithData = async (
     // 1. Prepare Text Data (Customers, Contracts...)
     const jsonData = prepareJsonContext(appState);
     
-    // 2. Prepare System Instruction Parts
+    // 2. Prepare System Instruction Parts (STRICT GROUNDING ENFORCED)
     const systemParts: any[] = [
-        { text: `Bạn là TuanChom, trợ lý AI cao cấp của Prudential.
+        { text: `Bạn là TuanChom, Trợ lý AI chuyên về Nghiệp vụ và Pháp lý của Prudential.
         
         DỮ LIỆU HỆ THỐNG (JSON):
         ${jsonData}
         
-        NHIỆM VỤ:
-        - Trả lời câu hỏi về nghiệp vụ bảo hiểm, quy tắc sản phẩm, và thông tin khách hàng.
-        - Dưới đây là các tài liệu gốc (PDF) của các sản phẩm ĐANG BÁN (Active). Hãy sử dụng thông tin từ các file này để trả lời chính xác các câu hỏi về: Điều khoản loại trừ, Thời gian chờ, Quyền lợi chi tiết.
-        
-        QUY TẮC TRÌNH BÀY:
-        - **KHÔNG DÙNG BẢNG (MARKDOWN TABLE)**: Dùng danh sách gạch đầu dòng (-).
-        - Số liệu tiền tệ phải có "đ" hoặc "VNĐ".
-        - Trả lời ngắn gọn, đúng trọng tâm.
+        QUY TẮC CỐT LÕI (TUÂN THỦ TUYỆT ĐỐI):
+        1. **NGUYÊN TẮC "CHỈ TÀI LIỆU" (STRICT GROUNDING):**
+           - Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong các file PDF đính kèm và Dữ liệu JSON được cung cấp.
+           - TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài (pre-trained knowledge) để trả lời về điều khoản, quyền lợi, hay quy tắc sản phẩm. 
+           - Nếu thông tin không tìm thấy trong tài liệu, hãy trả lời chính xác: "Xin lỗi, tài liệu sản phẩm hiện tại không đề cập chi tiết đến vấn đề này.", KHÔNG ĐƯỢC tự suy đoán.
+
+        2. **YÊU CẦU TRÍCH DẪN (CITATION):**
+           - Khi trả lời về Điều khoản loại trừ, Thời gian chờ, hoặc Quyền lợi chi trả: BẮT BUỘC phải trích dẫn **nguyên văn (verbatim)** câu chữ trong tài liệu để đảm bảo tính pháp lý.
+           - Ghi rõ nguồn nếu có thể (Ví dụ: "Theo mục 2.4 - Loại trừ trách nhiệm...").
+
+        3. **TRÌNH BÀY & ĐỊNH DẠNG:**
+           - **KHÔNG DÙNG BẢNG (MARKDOWN TABLE)**: Dùng danh sách gạch đầu dòng (-).
+           - Số liệu tiền tệ phải có "đ" hoặc "VNĐ".
+           - Giọng văn: Khách quan, Chính xác, Ngắn gọn.
         ` }
     ];
 
@@ -169,7 +175,7 @@ export const chatWithData = async (
             const pdfParts = (await Promise.all(pdfPromises)).filter(Boolean);
             
             if (pdfParts.length > 0) {
-                systemParts.push({ text: "\n--- TÀI LIỆU SẢN PHẨM GỐC (PDF) ---" });
+                systemParts.push({ text: "\n--- TÀI LIỆU SẢN PHẨM GỐC (PDF) - CƠ SỞ PHÁP LÝ DUY NHẤT ---" });
                 systemParts.push(...pdfParts);
             }
         } catch (e) {
@@ -184,15 +190,14 @@ export const chatWithData = async (
 
     return await callAI({
         endpoint: 'chat',
-        model: 'gemini-1.5-flash', // Must use 1.5 Flash for PDF support
+        model: 'gemini-3-flash-preview',
         message: query,
         history: formattedHistory,
         systemInstruction: systemParts, // Send parts (Text + PDFs)
-        config: { temperature: 0.2 }
+        // IMPORTANT: Temperature set to 0.3 for balance between accuracy and naturalness
+        config: { temperature: 0.3 } 
     });
 };
-
-// Removed extractTextFromPdf as we now use direct PDF file processing via AI
 
 export const consultantChat = async (
     query: string,
@@ -206,7 +211,6 @@ export const consultantChat = async (
     planResult: PlanResult | null = null,
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
-    // ... (Logic giữ nguyên, chỉ thay đổi model gọi bên dưới) ...
     
     // Simplified context build for brevity in this snippet
     const fullProfile = `Khách hàng: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
@@ -218,7 +222,7 @@ export const consultantChat = async (
 
     return await callAI({
         endpoint: 'chat',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         message: query,
         history: formattedHistory,
         systemInstruction: `Bạn đang đóng vai ${roleplayMode}. Mục tiêu: ${conversationGoal}. Hồ sơ: ${fullProfile}. Style: ${chatStyle}`,
@@ -233,7 +237,7 @@ export const getObjectionSuggestions = async (
     const systemInstruction = `Gợi ý 3 cách xử lý từ chối cho khách hàng ${customer.fullName}. Output JSON.`;
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: `Khách nói: "${lastCustomerMessage}"`,
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.5 }
@@ -245,7 +249,7 @@ export const generateSocialPost = async (topic: string, tone: string): Promise<{
     const systemInstruction = `Viết 3 status Facebook về BHNT. Phong cách: ${tone}. Output JSON array.`;
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: `Chủ đề: ${topic}`,
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.8 }
@@ -257,7 +261,7 @@ export const generateContentSeries = async (topic: string): Promise<{ day: strin
     const systemInstruction = `Xây dựng chuỗi content 5 ngày. Output JSON array.`;
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: `Chủ đề: ${topic}`,
         systemInstruction: systemInstruction,
         config: { responseMimeType: "application/json", temperature: 0.7 }
@@ -268,7 +272,7 @@ export const generateContentSeries = async (topic: string): Promise<{ day: strin
 export const generateStory = async (facts: string, emotion: string): Promise<string> => {
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: `Dữ kiện: ${facts}`,
         systemInstruction: `Kể chuyện cảm xúc: ${emotion}`,
         config: { temperature: 0.9 }
@@ -279,7 +283,7 @@ export const generateClaimSupport = async (contract: Contract, customer: Custome
     const prompt = `Soạn tin nhắn hướng dẫn Claim cho HĐ ${contract.contractNumber} của ${customer.fullName}`;
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt
     });
 };

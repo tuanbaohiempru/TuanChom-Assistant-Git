@@ -10,8 +10,11 @@ const firebaseConfig = {
   apiKey: "AIzaSyBucXUKg5bsEv7mmVA2q3t5g2zzKvpA7qQ",
   authDomain: "studio-5841594141-93fc7.firebaseapp.com",
   projectId: "studio-5841594141-93fc7",
-  // Fix: Storage Bucket mặc định thường có đuôi .appspot.com
-  storageBucket: "studio-5841594141-93fc7.appspot.com", 
+  // LƯU Ý QUAN TRỌNG: 
+  // 1. Vào Firebase Console -> Storage -> Get Started để tạo Bucket.
+  // 2. Copy tên bucket (bỏ gs://) dán vào dưới đây.
+  // Mặc định dự án mới thường là: [project-id].firebasestorage.app
+  storageBucket: "studio-5841594141-93fc7.firebasestorage.app", 
   messagingSenderId: "148389290808",
   appId: "1:148389290808:web:33a5e679e7b0d54324d7cd"
 };
