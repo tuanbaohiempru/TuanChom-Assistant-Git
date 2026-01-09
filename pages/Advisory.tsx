@@ -439,7 +439,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                             Trừ đi tài sản/BH hiện có: <b>-{planResult.currentAmount.toLocaleString()}</b>.
                         </li>
                         <li className="font-bold text-red-600 dark:text-red-400">
-                            => Mệnh giá bảo hiểm cần thiết (Gap): {planResult.shortfall.toLocaleString()}.
+                            =&gt; Mệnh giá bảo hiểm cần thiết (Gap): {planResult.shortfall.toLocaleString()}.
                         </li>
                     </ul>
                 )}
