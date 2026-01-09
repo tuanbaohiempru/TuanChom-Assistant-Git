@@ -19,7 +19,12 @@ exports.geminiGateway = onCall({
     // 1. Kiểm tra API Key tồn tại
     if (!API_KEY) {
         console.error("ERROR: API_KEY is missing in environment variables. Check functions/.env");
-        throw new HttpsError('failed-precondition', 'Server chưa cấu hình API Key. Vui lòng kiểm tra file .env trong thư mục functions.');
+        throw new HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
+    }
+
+    // Ensure data exists
+    if (!request.data) {
+        throw new HttpsError('invalid-argument', 'Request body is missing.');
     }
 
     const { endpoint, model, contents, message, history, systemInstruction, config } = request.data;
@@ -33,7 +38,7 @@ exports.geminiGateway = onCall({
         // --- Helper: Format System Instruction & Config ---
         const cleanConfig = { ...(config || {}) };
         
-        // 1. Clean undefined/null values from config to prevent SDK errors
+        // 1. Clean undefined/null values
         Object.keys(cleanConfig).forEach(key => {
             if (cleanConfig[key] === undefined || cleanConfig[key] === null) {
                 delete cleanConfig[key];
@@ -42,31 +47,38 @@ exports.geminiGateway = onCall({
 
         // 2. Handle System Instruction specifically
         if (systemInstruction) {
-            if (typeof systemInstruction === 'string') {
-                cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
-            } else if (Array.isArray(systemInstruction)) {
-                cleanConfig.systemInstruction = { parts: systemInstruction };
-            } else {
-                cleanConfig.systemInstruction = systemInstruction;
+            try {
+                if (typeof systemInstruction === 'string') {
+                    cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
+                } else if (Array.isArray(systemInstruction)) {
+                    cleanConfig.systemInstruction = { parts: systemInstruction };
+                } else {
+                    cleanConfig.systemInstruction = systemInstruction;
+                }
+            } catch (e) {
+                console.warn("Error parsing system instruction:", e);
+                // Ignore if fails
             }
         }
 
         let resultText = '';
 
         if (endpoint === 'chat') {
+            // Validate history
+            const validHistory = Array.isArray(history) ? history : [];
+            
             const chat = ai.chats.create({
                 model: targetModel,
                 config: cleanConfig,
-                history: Array.isArray(history) ? history : []
+                history: validHistory
             });
             
-            // Ensure message is not empty/null
-            const msgContent = message || contents || " "; 
+            // Ensure message is string
+            const msgContent = message || (typeof contents === 'string' ? contents : " "); 
             const result = await chat.sendMessage({ message: msgContent });
             resultText = result.text;
         } else {
             // Generate Content
-            // IMPORTANT: Normalize contents. The SDK can handle strings, but explicit parts are safer.
             let formattedContents = contents;
             if (typeof contents === 'string') {
                 formattedContents = { parts: [{ text: contents }] };
@@ -80,43 +92,36 @@ exports.geminiGateway = onCall({
             resultText = result.text;
         }
 
-        // Safety check for empty response
         if (!resultText) {
-            console.warn("[Gemini Warning] Empty response text received.");
+            console.warn("[Gemini Warning] Empty response text.");
             return { text: "" };
         }
 
         return { text: resultText };
 
     } catch (error) {
-        // Log full error details for debugging
-        console.error("[Gemini API Error Details]", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        // Safe logging
+        console.error("[Gemini API Error]", error);
         
-        let clientMessage = error.message || 'Lỗi không xác định từ AI Server';
+        const clientMessage = error.message || 'Lỗi không xác định từ AI Server';
         let code = 'internal';
 
-        // Map errors to friendly messages
+        // Enhanced Error Mapping
         if (clientMessage.includes('API key')) {
-            clientMessage = 'API Key không hợp lệ hoặc hết hạn.';
             code = 'permission-denied';
         } else if (error.status === 404 || clientMessage.includes('not found')) {
-            clientMessage = `Model '${model || 'mặc định'}' không tồn tại.`;
             code = 'not-found';
         } else if (error.status === 429) {
-            clientMessage = 'Hệ thống đang quá tải (Quota Exceeded).';
             code = 'resource-exhausted';
         } else if (error.status === 400 || clientMessage.includes('INVALID_ARGUMENT')) {
-            clientMessage = `Dữ liệu không hợp lệ: ${clientMessage}`;
             code = 'invalid-argument';
         } else if (clientMessage.includes('deadline')) {
-             clientMessage = 'Hết thời gian chờ (Deadline Exceeded).';
              code = 'deadline-exceeded';
-        } else if (clientMessage.includes('topic') || clientMessage.includes('fetch failed')) {
-             // Catching the specific transport error reported
-             clientMessage = 'Lỗi kết nối AI (Transport Error). Vui lòng thử lại sau vài giây.';
+        } else if (clientMessage.includes('topic') || clientMessage.includes('fetch failed') || clientMessage.includes('undici')) {
+             // Catch known transport issues
              code = 'unavailable';
         }
 
-        throw new HttpsError(code, clientMessage);
+        throw new HttpsError(code, clientMessage, error);
     }
 });
