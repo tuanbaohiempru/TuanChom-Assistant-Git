@@ -117,6 +117,46 @@ const prepareJsonContext = (state: AppState) => {
   });
 };
 
+// --- HELPER: SANITIZE HISTORY ---
+const sanitizeHistory = (history: { role: 'user' | 'model'; text: string }[]) => {
+    const cleanHistory: { role: string; parts: { text: string }[] }[] = [];
+    
+    if (history.length > 0) {
+        // 1. Ensure starts with 'user'
+        let startIndex = 0;
+        while(startIndex < history.length && history[startIndex].role !== 'user') {
+            startIndex++;
+        }
+        
+        for (let i = startIndex; i < history.length; i++) {
+            const currentRole = history[i].role;
+            const currentText = history[i].text;
+
+            if (cleanHistory.length === 0) {
+                cleanHistory.push({ role: currentRole, parts: [{ text: currentText }] });
+            } else {
+                // 2. Ensure alternation: If current role != last added role, add it.
+                // If same role, we skip the previous one or skip this one. 
+                // Strategy: Skip duplicate consecutive roles to force alternation.
+                const lastRole = cleanHistory[cleanHistory.length - 1].role;
+                if (currentRole !== lastRole) {
+                    cleanHistory.push({ role: currentRole, parts: [{ text: currentText }] });
+                } 
+            }
+        }
+    }
+
+    // 3. Ensure ends with 'model'
+    // The Gemini API requires the history passed to initialization to allow the *next* message to be 'user'.
+    // Since `sendMessage` adds a 'user' message, the history state must end with 'model'.
+    // If the last message is 'user', it means the previous response failed or is missing. We drop it.
+    if (cleanHistory.length > 0 && cleanHistory[cleanHistory.length - 1].role === 'user') {
+        cleanHistory.pop();
+    }
+
+    return cleanHistory;
+};
+
 export const chatWithData = async (
   query: string, 
   appState: AppState, 
@@ -126,34 +166,32 @@ export const chatWithData = async (
     // 1. Prepare Text Data (Customers, Contracts...)
     const jsonData = prepareJsonContext(appState);
     
-    // 2. Prepare System Instruction Parts (STRICT GROUNDING ENFORCED)
-    const systemParts: any[] = [
-        { text: `Bạn là TuanChom, Trợ lý AI chuyên về Nghiệp vụ và Pháp lý của Prudential.
+    // 2. System Instruction (Text Context Only)
+    const systemInstructionText = `Bạn là TuanChom, Trợ lý AI chuyên về Nghiệp vụ và Pháp lý của Prudential.
         
-        DỮ LIỆU HỆ THỐNG (JSON):
-        ${jsonData}
-        
-        QUY TẮC CỐT LÕI (TUÂN THỦ TUYỆT ĐỐI):
-        1. **NGUYÊN TẮC "CHỈ TÀI LIỆU" (STRICT GROUNDING):**
-           - Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong các file PDF đính kèm và Dữ liệu JSON được cung cấp.
-           - TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài (pre-trained knowledge) để trả lời về điều khoản, quyền lợi, hay quy tắc sản phẩm. 
-           - Nếu thông tin không tìm thấy trong tài liệu, hãy trả lời chính xác: "Xin lỗi, tài liệu sản phẩm hiện tại không đề cập chi tiết đến vấn đề này.", KHÔNG ĐƯỢC tự suy đoán.
-
-        2. **YÊU CẦU TRÍCH DẪN (CITATION):**
-           - Khi trả lời về Điều khoản loại trừ, Thời gian chờ, hoặc Quyền lợi chi trả: BẮT BUỘC phải trích dẫn **nguyên văn (verbatim)** câu chữ trong tài liệu để đảm bảo tính pháp lý.
-           - Ghi rõ nguồn nếu có thể (Ví dụ: "Theo mục 2.4 - Loại trừ trách nhiệm...").
-
-        3. **TRÌNH BÀY & ĐỊNH DẠNG:**
-           - **KHÔNG DÙNG BẢNG (MARKDOWN TABLE)**: Dùng danh sách gạch đầu dòng (-).
-           - Số liệu tiền tệ phải có "đ" hoặc "VNĐ".
-           - Giọng văn: Khách quan, Chính xác, Ngắn gọn.
-        ` }
-    ];
-
-    // 3. Attach PDF Documents (Only for Active Products to save bandwidth/tokens)
-    const activeProductsWithPdf = appState.products.filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
+    DỮ LIỆU HỆ THỐNG (JSON):
+    ${jsonData}
     
-    // Limit to top 3 active PDFs to avoid hitting request size limits if many products
+    QUY TẮC CỐT LÕI (TUÂN THỦ TUYỆT ĐỐI):
+    1. **NGUYÊN TẮC "CHỈ TÀI LIỆU" (STRICT GROUNDING):**
+       - Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong các file PDF đính kèm (nếu có) và Dữ liệu JSON được cung cấp.
+       - TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài (pre-trained knowledge) để trả lời về điều khoản, quyền lợi, hay quy tắc sản phẩm. 
+       - Nếu thông tin không tìm thấy trong tài liệu, hãy trả lời chính xác: "Xin lỗi, tài liệu sản phẩm hiện tại không đề cập chi tiết đến vấn đề này.", KHÔNG ĐƯỢC tự suy đoán.
+
+    2. **YÊU CẦU TRÍCH DẪN (CITATION):**
+       - Khi trả lời về Điều khoản loại trừ, Thời gian chờ, hoặc Quyền lợi chi trả: BẮT BUỘC phải trích dẫn **nguyên văn (verbatim)** câu chữ trong tài liệu để đảm bảo tính pháp lý.
+       - Ghi rõ nguồn nếu có thể (Ví dụ: "Theo mục 2.4 - Loại trừ trách nhiệm...").
+
+    3. **TRÌNH BÀY & ĐỊNH DẠNG:**
+       - **KHÔNG DÙNG BẢNG (MARKDOWN TABLE)**: Dùng danh sách gạch đầu dòng (-).
+       - Số liệu tiền tệ phải có "đ" hoặc "VNĐ".
+       - Giọng văn: Khách quan, Chính xác, Ngắn gọn.
+    `;
+
+    // 3. Prepare PDF History (Pseudo-turn)
+    // Instead of system instruction, we inject PDF as the "First User Message"
+    const pdfHistoryMessages: any[] = [];
+    const activeProductsWithPdf = appState.products.filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
     const productsToLoad = activeProductsWithPdf.slice(0, 3);
 
     if (productsToLoad.length > 0) {
@@ -175,27 +213,39 @@ export const chatWithData = async (
             const pdfParts = (await Promise.all(pdfPromises)).filter(Boolean);
             
             if (pdfParts.length > 0) {
-                systemParts.push({ text: "\n--- TÀI LIỆU SẢN PHẨM GỐC (PDF) - CƠ SỞ PHÁP LÝ DUY NHẤT ---" });
-                systemParts.push(...pdfParts);
+                // Create a "User" turn uploading files
+                pdfHistoryMessages.push({
+                    role: 'user',
+                    parts: [
+                        ...pdfParts,
+                        { text: "Đây là các tài liệu điều khoản sản phẩm (PDF). Hãy sử dụng chúng làm cơ sở pháp lý duy nhất để trả lời các câu hỏi." }
+                    ]
+                });
+                // Create a "Model" turn acknowledging files
+                pdfHistoryMessages.push({
+                    role: 'model',
+                    parts: [{ text: "Đã nhận tài liệu. Tôi sẽ căn cứ tuyệt đối vào nội dung trong các file này để tư vấn." }]
+                });
             }
         } catch (e) {
             console.error("Error loading PDFs for AI:", e);
         }
     }
 
-    const formattedHistory = history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.text }]
-    }));
+    // 4. Sanitize Text History
+    const cleanTextHistory = sanitizeHistory(history);
+
+    // 5. Combine: [PDF Context] + [Clean Conversation]
+    // If cleanTextHistory is empty, PDF context acts as the start of conversation.
+    const finalHistory = [...pdfHistoryMessages, ...cleanTextHistory];
 
     return await callAI({
         endpoint: 'chat',
         model: 'gemini-3-flash-preview',
         message: query,
-        history: formattedHistory,
-        systemInstruction: systemParts, // Send parts (Text + PDFs)
-        // IMPORTANT: Temperature set to 0.3 for balance between accuracy and naturalness
-        config: { temperature: 0.3 } 
+        history: finalHistory,
+        systemInstruction: systemInstructionText, 
+        config: { temperature: 0.3 }
     });
 };
 
@@ -212,19 +262,16 @@ export const consultantChat = async (
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
     
-    // Simplified context build for brevity in this snippet
     const fullProfile = `Khách hàng: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
     
-    const formattedHistory = history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.text }]
-    }));
+    // Sanitize History
+    const finalHistory = sanitizeHistory(history);
 
     return await callAI({
         endpoint: 'chat',
         model: 'gemini-3-flash-preview',
         message: query,
-        history: formattedHistory,
+        history: finalHistory,
         systemInstruction: `Bạn đang đóng vai ${roleplayMode}. Mục tiêu: ${conversationGoal}. Hồ sơ: ${fullProfile}. Style: ${chatStyle}`,
         config: { temperature: chatStyle === 'zalo' ? 0.8 : 0.6 }
     });

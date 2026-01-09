@@ -8,7 +8,13 @@ const { GoogleGenAI } = require("@google/genai");
 // Lấy API Key từ biến môi trường
 const API_KEY = process.env.API_KEY;
 
-exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request) => {
+// Cấu hình timeout 300s (5 phút) và memory cao hơn để xử lý tác vụ AI nặng
+exports.geminiGateway = onCall({ 
+    cors: true, 
+    maxInstances: 10,
+    timeoutSeconds: 300, 
+    memory: '512MiB'
+}, async (request) => {
     
     // Log để kiểm tra API Key đã được load chưa (Chỉ log 4 ký tự cuối để bảo mật)
     const keyStatus = API_KEY ? `Loaded (ends with ...${API_KEY.slice(-4)})` : 'MISSING';
@@ -34,10 +40,17 @@ exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request)
         let resultText = '';
 
         if (endpoint === 'chat') {
+            // Ensure systemInstruction is formatted correctly for chat config
+            // If it's an array (parts), wrapping it in { parts: ... } is safer for the Node SDK
+            let formattedSystemInstruction = systemInstruction;
+            if (Array.isArray(systemInstruction)) {
+                formattedSystemInstruction = { parts: systemInstruction };
+            }
+
             const chat = ai.chats.create({
                 model: targetModel,
                 config: {
-                    systemInstruction: systemInstruction, // systemInstruction có thể là String hoặc Array of Parts (chứa PDF)
+                    systemInstruction: formattedSystemInstruction, // Correctly formatted
                     ...config
                 },
                 history: history || []
@@ -76,6 +89,12 @@ exports.geminiGateway = onCall({ cors: true, maxInstances: 10 }, async (request)
         } else if (error.status === 429) {
             clientMessage = 'Hệ thống đang quá tải (Quota Exceeded). Vui lòng thử lại sau.';
             code = 'resource-exhausted';
+        } else if (error.status === 400) {
+            clientMessage = 'Yêu cầu không hợp lệ (400). Kiểm tra lịch sử chat hoặc định dạng file.';
+            code = 'invalid-argument';
+        } else if (clientMessage.includes('deadline')) {
+             clientMessage = 'Hết thời gian chờ (Deadline Exceeded). AI đang xử lý quá nhiều dữ liệu.';
+             code = 'deadline-exceeded';
         }
 
         throw new HttpsError(code, clientMessage);
