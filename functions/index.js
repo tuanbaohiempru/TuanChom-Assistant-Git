@@ -41,10 +41,8 @@ exports.geminiGateway = onCall({
         });
 
         // 2. Handle System Instruction specifically
-        // Ensure it's correctly placed in config and formatted as Parts
         if (systemInstruction) {
             if (typeof systemInstruction === 'string') {
-                // SDK v1.x prefer explicit parts for robustness in serverless
                 cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
             } else if (Array.isArray(systemInstruction)) {
                 cleanConfig.systemInstruction = { parts: systemInstruction };
@@ -68,9 +66,15 @@ exports.geminiGateway = onCall({
             resultText = result.text;
         } else {
             // Generate Content
+            // IMPORTANT: Normalize contents. The SDK can handle strings, but explicit parts are safer.
+            let formattedContents = contents;
+            if (typeof contents === 'string') {
+                formattedContents = { parts: [{ text: contents }] };
+            }
+
             const result = await ai.models.generateContent({
                 model: targetModel,
-                contents: contents,
+                contents: formattedContents,
                 config: cleanConfig
             });
             resultText = result.text;
@@ -107,10 +111,9 @@ exports.geminiGateway = onCall({
         } else if (clientMessage.includes('deadline')) {
              clientMessage = 'Hết thời gian chờ (Deadline Exceeded).';
              code = 'deadline-exceeded';
-        } else if (clientMessage.includes('topic')) {
-             // Specific handler for "reading 'topic'" which can happen in gRPC/Transport layer errors
-             // This is often a transient transport error in Node SDK
-             clientMessage = 'Lỗi kết nối AI (Transport Error). Vui lòng thử lại.';
+        } else if (clientMessage.includes('topic') || clientMessage.includes('fetch failed')) {
+             // Catching the specific transport error reported
+             clientMessage = 'Lỗi kết nối AI (Transport Error). Vui lòng thử lại sau vài giây.';
              code = 'unavailable';
         }
 
