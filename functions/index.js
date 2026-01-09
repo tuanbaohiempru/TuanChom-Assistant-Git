@@ -46,18 +46,22 @@ exports.geminiGateway = onCall({
         });
 
         // 2. Handle System Instruction specifically
+        // SDK yêu cầu systemInstruction phải là string hoặc object { parts: [...] }
         if (systemInstruction) {
             try {
                 if (typeof systemInstruction === 'string') {
                     cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
                 } else if (Array.isArray(systemInstruction)) {
                     cleanConfig.systemInstruction = { parts: systemInstruction };
-                } else {
+                } else if (typeof systemInstruction === 'object' && systemInstruction.parts) {
                     cleanConfig.systemInstruction = systemInstruction;
+                } else {
+                    // Fallback for other object types, try to extract text or ignore
+                    console.warn("Invalid systemInstruction format, ignoring.");
                 }
             } catch (e) {
                 console.warn("Error parsing system instruction:", e);
-                // Ignore if fails
+                // Ignore if fails to prevent crash
             }
         }
 
@@ -100,8 +104,11 @@ exports.geminiGateway = onCall({
         return { text: resultText };
 
     } catch (error) {
-        // Safe logging
-        console.error("[Gemini API Error]", error);
+        // Safe logging: Don't stringify the whole error object blindly
+        console.error("[Gemini API Error Log]", error.message);
+        if (error.response) {
+             console.error("Upstream Response:", JSON.stringify(error.response));
+        }
         
         const clientMessage = error.message || 'Lỗi không xác định từ AI Server';
         let code = 'internal';
@@ -122,6 +129,15 @@ exports.geminiGateway = onCall({
              code = 'unavailable';
         }
 
-        throw new HttpsError(code, clientMessage, error);
+        // CRITICAL FIX: Do NOT pass the raw `error` object as the 3rd argument.
+        // It causes "Internal" error on serialization failure if the error object is complex.
+        // Only pass safe, primitive data.
+        const safeErrorDetails = {
+            status: error.status,
+            statusText: error.statusText,
+            originalMessage: clientMessage
+        };
+
+        throw new HttpsError(code, clientMessage, safeErrorDetails);
     }
 });

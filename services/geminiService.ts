@@ -3,21 +3,35 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "./firebaseConfig";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Product } from "../types";
 
-// --- HELPER TO CALL CLOUD FUNCTION ---
-const callAI = async (payload: any): Promise<string> => {
+// --- HELPER TO CALL CLOUD FUNCTION WITH RETRY ---
+const callAI = async (payload: any, retries = 2): Promise<string> => {
     try {
         // Increase client-side timeout to 5 minutes (300,000ms) to match server config
-        // Default is usually 70s, which causes deadline-exceeded even if server is still processing
         const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 300000 });
         const result: any = await gateway(payload);
         return result.data.text || "";
     } catch (error: any) {
-        console.error("AI Service Error Full:", error);
+        console.error(`AI Service Error (Remaining retries: ${retries}):`, error);
+        
+        // Retry logic for transient errors (Internal, Unavailable, Deadline Exceeded)
+        if (retries > 0) {
+            const code = error.code;
+            if (code === 'internal' || code === 'unavailable' || code === 'deadline-exceeded' || error.message.includes('fetch failed')) {
+                console.log(`Retrying... (${retries})`);
+                await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5s before retry
+                return callAI(payload, retries - 1);
+            }
+        }
+
         const msg = error.message || 'Lỗi không xác định';
         if (msg.includes("Model không tồn tại")) {
-            return `Lỗi AI: Model chưa được hỗ trợ.`;
+            return `Lỗi AI: Model chưa được hỗ trợ. Vui lòng kiểm tra cấu hình backend.`;
         }
-        return `Lỗi AI: ${msg}`;
+        if (msg.includes("API key")) {
+            return `Lỗi AI: Cấu hình API Key không hợp lệ.`;
+        }
+        
+        return `TuanChom AI đang bận hoặc gặp sự cố kết nối. (${msg}). Vui lòng thử lại sau giây lát.`;
     }
 };
 
@@ -75,9 +89,9 @@ export const generateFinancialAdvice = async (
 };
 
 const prepareJsonContext = (state: AppState) => {
-  // SAFETY LIMIT: Only send top 50 recent customers and contracts to avoid Token Limit Exceeded
-  const recentCustomers = state.customers.slice(0, 50);
-  const recentContracts = state.contracts.slice(0, 50);
+  // SAFETY LIMIT: Only send top 30 recent customers and contracts to avoid Token Limit Exceeded and Payload Size errors
+  const recentCustomers = state.customers.slice(0, 30);
+  const recentContracts = state.contracts.slice(0, 30);
 
   return JSON.stringify({
     customers: recentCustomers.map(c => ({
@@ -87,7 +101,7 @@ const prepareJsonContext = (state: AppState) => {
       job: c.job,
       health: c.health,
       status: c.status,
-      interactions: c.interactionHistory
+      interactions: c.interactionHistory ? c.interactionHistory.slice(0, 3) : [] // Limit interactions
     })),
     contracts: recentContracts.map(c => ({
       number: c.contractNumber,
@@ -115,7 +129,7 @@ const prepareJsonContext = (state: AppState) => {
       status: p.status, 
       description: p.description
     })),
-    appointments: state.appointments.slice(0, 20)
+    appointments: state.appointments.slice(0, 10)
   });
 };
 
@@ -194,7 +208,8 @@ export const chatWithData = async (
     // Instead of system instruction, we inject PDF as the "First User Message"
     const pdfHistoryMessages: any[] = [];
     const activeProductsWithPdf = appState.products.filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
-    const productsToLoad = activeProductsWithPdf.slice(0, 3);
+    // Limit to 2 PDFs to avoid Payload Size Error
+    const productsToLoad = activeProductsWithPdf.slice(0, 2);
 
     if (productsToLoad.length > 0) {
         try {
