@@ -6,7 +6,9 @@ import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, 
 // --- HELPER TO CALL CLOUD FUNCTION ---
 const callAI = async (payload: any): Promise<string> => {
     try {
-        const gateway = httpsCallable(functions, 'geminiGateway');
+        // Increase client-side timeout to 5 minutes (300,000ms) to match server config
+        // Default is usually 70s, which causes deadline-exceeded even if server is still processing
+        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 300000 });
         const result: any = await gateway(payload);
         return result.data.text || "";
     } catch (error: any) {

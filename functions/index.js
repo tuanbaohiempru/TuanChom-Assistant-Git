@@ -16,10 +16,6 @@ exports.geminiGateway = onCall({
     memory: '512MiB'
 }, async (request) => {
     
-    // Log để kiểm tra API Key đã được load chưa (Chỉ log 4 ký tự cuối để bảo mật)
-    const keyStatus = API_KEY ? `Loaded (ends with ...${API_KEY.slice(-4)})` : 'MISSING';
-    console.log(`[Gemini Init] API Key Status: ${keyStatus}`);
-
     // 1. Kiểm tra API Key tồn tại
     if (!API_KEY) {
         console.error("ERROR: API_KEY is missing in environment variables. Check functions/.env");
@@ -28,73 +24,94 @@ exports.geminiGateway = onCall({
 
     const { endpoint, model, contents, message, history, systemInstruction, config } = request.data;
     
-    // Log request để debug
     console.log(`[Gemini Request] Endpoint: ${endpoint}, Model: ${model || 'default'}`);
 
     try {
         const ai = new GoogleGenAI({ apiKey: API_KEY });
-        
-        // Cập nhật: Sử dụng gemini-3-flash-preview làm mặc định (thay cho 1.5-flash cũ)
         const targetModel = model || 'gemini-3-flash-preview'; 
+
+        // --- Helper: Format System Instruction & Config ---
+        const cleanConfig = { ...(config || {}) };
+        
+        // 1. Clean undefined/null values from config to prevent SDK errors
+        Object.keys(cleanConfig).forEach(key => {
+            if (cleanConfig[key] === undefined || cleanConfig[key] === null) {
+                delete cleanConfig[key];
+            }
+        });
+
+        // 2. Handle System Instruction specifically
+        // Ensure it's correctly placed in config and formatted as Parts
+        if (systemInstruction) {
+            if (typeof systemInstruction === 'string') {
+                // SDK v1.x prefer explicit parts for robustness in serverless
+                cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
+            } else if (Array.isArray(systemInstruction)) {
+                cleanConfig.systemInstruction = { parts: systemInstruction };
+            } else {
+                cleanConfig.systemInstruction = systemInstruction;
+            }
+        }
 
         let resultText = '';
 
         if (endpoint === 'chat') {
-            // Ensure systemInstruction is formatted correctly for chat config
-            // If it's an array (parts), wrapping it in { parts: ... } is safer for the Node SDK
-            let formattedSystemInstruction = systemInstruction;
-            if (Array.isArray(systemInstruction)) {
-                formattedSystemInstruction = { parts: systemInstruction };
-            }
-
             const chat = ai.chats.create({
                 model: targetModel,
-                config: {
-                    systemInstruction: formattedSystemInstruction, // Correctly formatted
-                    ...config
-                },
-                history: history || []
+                config: cleanConfig,
+                history: Array.isArray(history) ? history : []
             });
-            // Chat: dùng sendMessage với object { message: ... }
-            const result = await chat.sendMessage({ message: message || contents || "Hello" });
+            
+            // Ensure message is not empty/null
+            const msgContent = message || contents || " "; 
+            const result = await chat.sendMessage({ message: msgContent });
             resultText = result.text;
         } else {
-            // Generate Content: dùng generateContent
+            // Generate Content
             const result = await ai.models.generateContent({
                 model: targetModel,
                 contents: contents,
-                config: {
-                    systemInstruction: systemInstruction,
-                    ...config
-                }
+                config: cleanConfig
             });
             resultText = result.text;
+        }
+
+        // Safety check for empty response
+        if (!resultText) {
+            console.warn("[Gemini Warning] Empty response text received.");
+            return { text: "" };
         }
 
         return { text: resultText };
 
     } catch (error) {
-        console.error("[Gemini API Error Details]", JSON.stringify(error, null, 2));
+        // Log full error details for debugging
+        console.error("[Gemini API Error Details]", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
         
-        // Phân loại lỗi để trả về Client dễ hiểu hơn
         let clientMessage = error.message || 'Lỗi không xác định từ AI Server';
         let code = 'internal';
 
+        // Map errors to friendly messages
         if (clientMessage.includes('API key')) {
-            clientMessage = 'API Key không hợp lệ hoặc hết hạn. Vui lòng kiểm tra lại.';
+            clientMessage = 'API Key không hợp lệ hoặc hết hạn.';
             code = 'permission-denied';
         } else if (error.status === 404 || clientMessage.includes('not found')) {
-            clientMessage = `Model '${model || 'mặc định'}' không tồn tại. Hãy thử đổi model khác.`;
+            clientMessage = `Model '${model || 'mặc định'}' không tồn tại.`;
             code = 'not-found';
         } else if (error.status === 429) {
-            clientMessage = 'Hệ thống đang quá tải (Quota Exceeded). Vui lòng thử lại sau.';
+            clientMessage = 'Hệ thống đang quá tải (Quota Exceeded).';
             code = 'resource-exhausted';
-        } else if (error.status === 400) {
-            clientMessage = 'Yêu cầu không hợp lệ (400). Kiểm tra lịch sử chat hoặc định dạng file.';
+        } else if (error.status === 400 || clientMessage.includes('INVALID_ARGUMENT')) {
+            clientMessage = `Dữ liệu không hợp lệ: ${clientMessage}`;
             code = 'invalid-argument';
         } else if (clientMessage.includes('deadline')) {
-             clientMessage = 'Hết thời gian chờ (Deadline Exceeded). AI đang xử lý quá nhiều dữ liệu.';
+             clientMessage = 'Hết thời gian chờ (Deadline Exceeded).';
              code = 'deadline-exceeded';
+        } else if (clientMessage.includes('topic')) {
+             // Specific handler for "reading 'topic'" which can happen in gRPC/Transport layer errors
+             // This is often a transient transport error in Node SDK
+             clientMessage = 'Lỗi kết nối AI (Transport Error). Vui lòng thử lại.';
+             code = 'unavailable';
         }
 
         throw new HttpsError(code, clientMessage);
