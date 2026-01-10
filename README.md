@@ -1,20 +1,63 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# TuanChom - Ứng dụng Quản lý Tư vấn Bảo hiểm
 
-This contains everything you need to run your app locally.
+Đây là ứng dụng web dành riêng cho tư vấn viên bảo hiểm Prudential, giúp quản lý khách hàng, hợp đồng, và tư vấn sản phẩm với sự hỗ trợ của AI.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1NvYTjk6lFEv3oit1ChUjheuZhtKUB2gK
+## 🚀 Hướng dẫn Deploy lên Firebase (Cá nhân)
 
-## Run Locally
+Để ứng dụng chạy trên tài khoản Firebase của riêng bạn (thay vì Demo), hãy làm theo các bước sau:
 
-**Prerequisites:**  Node.js
+### 1. Tạo Project Firebase
+1. Truy cập [Firebase Console](https://console.firebase.google.com/).
+2. Tạo project mới (ví dụ: `tuanchom-manager`).
+3. Bật **Authentication** (Google & Email/Password).
+4. Bật **Firestore Database** (Start in Test mode hoặc Production).
+5. Bật **Storage**.
+6. Bật **Functions** (Cần nâng cấp gói Blaze - Pay as you go, nhưng có hạn mức miễn phí rộng rãi).
 
+### 2. Lấy Cấu hình Firebase
+1. Trong Project Settings -> General -> Your apps -> Add App (Web).
+2. Copy các thông số config (`apiKey`, `authDomain`, `projectId`, ...).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### 3. Cấu hình Môi trường (Environment Variables)
+Tạo file `.env` tại thư mục gốc và điền thông tin:
+
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+```
+
+### 4. Cấu hình Backend (Cloud Functions)
+Di chuyển vào thư mục `functions` và tạo file `.env`:
+
+```bash
+cd functions
+# Tạo file .env với nội dung:
+API_KEY=your_google_ai_studio_api_key
+```
+*Lưu ý: Lấy API Key Gemini tại [Google AI Studio](https://aistudio.google.com/).*
+
+### 5. Deploy
+Cài đặt Firebase CLI nếu chưa có: `npm install -g firebase-tools`
+
+```bash
+# Đăng nhập
+firebase login
+
+# Chọn project của bạn
+firebase use --add
+
+# Deploy toàn bộ (Frontend + Backend)
+npm run build
+firebase deploy
+```
+
+## ✨ Tính năng chính
+- **CRM**: Quản lý khách hàng, lịch sử tương tác, mối quan hệ gia đình.
+- **Hợp đồng**: Quản lý hợp đồng, nhắc phí tự động.
+- **AI Assistant**: Chat với tài liệu sản phẩm, gợi ý xử lý từ chối, soạn tin nhắn mẫu.
+- **Hoạch định tài chính**: Tính toán quỹ hưu trí, học vấn, bảo vệ.

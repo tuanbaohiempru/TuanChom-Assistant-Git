@@ -30,13 +30,22 @@ const defaultConfig = {
 };
 
 // Logic: Chỉ dùng Config từ Env nếu có Project ID hợp lệ, ngược lại dùng Default
-// any cast used to avoid strict type checking on partial configs during dev
-const firebaseConfig = (configFromEnv.projectId ? configFromEnv : defaultConfig) as any;
+const useEnv = !!configFromEnv.projectId;
+const firebaseConfig = (useEnv ? configFromEnv : defaultConfig) as any;
 
 console.log("Firebase Config Loaded:", { 
     projectId: firebaseConfig.projectId, 
-    source: configFromEnv.projectId ? "Environment Variables" : "Default Hardcoded" 
+    source: useEnv ? "Environment Variables (Production)" : "Default Hardcoded (Demo)" 
 });
+
+if (!useEnv) {
+    console.warn(
+        "%cLƯU Ý: Ứng dụng đang chạy ở chế độ Demo với cấu hình mặc định.\n" +
+        "Để deploy cho cá nhân, vui lòng tạo file .env và cấu hình VITE_FIREBASE_... " +
+        "Xem hướng dẫn trong README.md",
+        "color: orange; font-weight: bold; font-size: 12px;"
+    );
+}
 
 // Khởi tạo Firebase
 const app = (firebaseApp as any).initializeApp(firebaseConfig);
