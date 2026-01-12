@@ -5,9 +5,13 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
-  // SECURE FIX: Remove API_KEY from the environment variables exposed to the client
-  // Only expose safe variables (like FIREBASE config) Tuan
-  const { API_KEY, ...safeEnv } = env;
+  // HYBRID MODE: Expose API_KEY to allow client-side fallback if Cloud Functions fail/not deployed.
+  // Note: For maximum security in production, try to rely on Cloud Functions.
+  const safeEnv = {
+    ...env,
+    // Ensure API_KEY is passed if it exists in .env
+    API_KEY: env.API_KEY || ''
+  };
 
   return {
     plugins: [react()],
