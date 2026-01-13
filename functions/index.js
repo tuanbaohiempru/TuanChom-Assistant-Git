@@ -2,7 +2,7 @@
 // Load biến môi trường từ file .env (QUAN TRỌNG)
 require('dotenv').config();
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions");
 const { GoogleGenAI } = require("@google/genai");
 const fs = require('fs');
 const os = require('os');
@@ -20,25 +20,29 @@ const downloadFile = async (url, outputPath) => {
     await pipeline(response.body, fileStream);
 };
 
-// Cấu hình timeout 540s (9 phút) và memory cao hơn để xử lý tác vụ AI nặng
-exports.geminiGateway = onCall({ 
-    cors: true, 
-    maxInstances: 10,
-    timeoutSeconds: 540, 
-    memory: '1GiB' 
-}, async (request) => {
+// CHUYỂN VỀ GEN 1 (functions.https.onCall) để tránh lỗi Eventarc/IAM
+// Cấu hình timeout 540s (9 phút) và memory 1GB để xử lý tác vụ AI
+exports.geminiGateway = functions
+    .runWith({
+        timeoutSeconds: 540,
+        memory: '1GB',
+        maxInstances: 10
+    })
+    .https.onCall(async (data, context) => {
     
     // 1. Kiểm tra API Key tồn tại
     if (!API_KEY) {
-        console.error("ERROR: API_KEY is missing in environment variables. Check functions/.env or Cloud Functions secrets.");
-        throw new HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
+        console.error("ERROR: API_KEY is missing in environment variables.");
+        throw new functions.https.HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
     }
 
-    if (!request.data) {
-        throw new HttpsError('invalid-argument', 'Request body is missing.');
+    // 2. Validate request body
+    // Trong Gen 1, 'data' được truyền trực tiếp, không cần request.data
+    if (!data) {
+        throw new functions.https.HttpsError('invalid-argument', 'Request body is missing.');
     }
 
-    const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls, cachedContent } = request.data;
+    const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls, cachedContent } = data;
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     // --- ENDPOINT: CREATE CACHE (Context Caching) ---
@@ -110,13 +114,13 @@ exports.geminiGateway = onCall({
 
         } catch (error) {
             console.error("[Cache Error]", error);
-            throw new HttpsError('internal', error.message || 'Failed to create cache');
+            throw new functions.https.HttpsError('internal', error.message || 'Failed to create cache');
         }
     }
 
-    // --- ENDPOINT: FETCH URL (Legacy Proxy - Optional) ---
+    // --- ENDPOINT: FETCH URL (Legacy Proxy) ---
     if (endpoint === 'fetchUrl') {
-        if (!url) throw new HttpsError('invalid-argument', 'Missing URL.');
+        if (!url) throw new functions.https.HttpsError('invalid-argument', 'Missing URL.');
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
@@ -125,7 +129,7 @@ exports.geminiGateway = onCall({
             const base64 = buffer.toString('base64');
             return { base64 };
         } catch (e) {
-            throw new HttpsError('internal', 'Could not fetch file server-side.');
+            throw new functions.https.HttpsError('internal', 'Could not fetch file server-side.');
         }
     }
 
@@ -197,6 +201,6 @@ exports.geminiGateway = onCall({
         else if (error.status === 404) code = 'not-found';
         else if (error.status === 429) code = 'resource-exhausted';
         
-        throw new HttpsError(code, clientMessage);
+        throw new functions.https.HttpsError(code, clientMessage);
     }
 });
