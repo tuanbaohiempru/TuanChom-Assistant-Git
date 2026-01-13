@@ -14,6 +14,12 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
+    // QUAN TRỌNG: Tắt copy thư mục public mặc định để tránh file index.html của Firebase đè lên app
+    publicDir: false, 
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+    },
     plugins: [react()],
     define: {
       'process.env': JSON.stringify(safeEnv)
