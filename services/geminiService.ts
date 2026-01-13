@@ -162,7 +162,19 @@ const prepareJsonContext = (state: AppState) => {
 };
 
 const sanitizeHistory = (history: any[]) => {
-    return history.map(h => ({
+    // FIX: "History must start with a user turn"
+    // Tìm tin nhắn 'user' đầu tiên trong lịch sử
+    const firstUserIndex = history.findIndex(h => h.role === 'user');
+    
+    // Nếu không có tin nhắn user nào (chỉ toàn model chào), trả về mảng rỗng để API tự khởi tạo
+    if (firstUserIndex === -1) {
+        return [];
+    }
+
+    // Cắt bỏ các tin nhắn model ở đầu (trước tin nhắn user đầu tiên)
+    const validHistory = history.slice(firstUserIndex);
+
+    return validHistory.map(h => ({
         role: h.role,
         parts: h.parts || [{ text: h.text }]
     }));
@@ -225,11 +237,15 @@ export const consultantChat = async (
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
     const fullProfile = `Khách: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
+    
+    // Cũng áp dụng sanitize cho consultantChat
+    const cleanHistory = sanitizeHistory(history);
+
     return await callAI({
         endpoint: 'chat',
         model: 'gemini-3-flash-preview',
         message: query,
-        history: sanitizeHistory(history),
+        history: cleanHistory,
         systemInstruction: `Roleplay: ${roleplayMode}. Goal: ${conversationGoal}. Profile: ${fullProfile}. Style: ${chatStyle}`,
         config: { temperature: 0.7 }
     });
