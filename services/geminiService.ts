@@ -103,7 +103,7 @@ const callAI = async (payload: any): Promise<string> => {
             console.warn("⚠️ Server Backend failed.", serverError);
             // Nếu đang dùng Cache mà lỗi server thì không thể fallback xuống client (vì client không truy cập được cache server)
             if (payload.cachedContent) {
-                return "Lỗi: Không thể kết nối đến Cache Server. Vui lòng thử lại sau hoặc kiểm tra đường truyền.";
+                return "Hiện tại kết nối đến kho dữ liệu bị gián đoạn. Vui lòng thử lại sau.";
             }
             // Nếu lỗi khác, thử fallback xuống client
             isServerAvailable = false;
@@ -199,17 +199,18 @@ export const chatWithData = async (
         cacheName = await createProductCache(appState.products);
     }
 
-    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Prudential.
+    // CẬP NHẬT CÂU LỆNH HỆ THỐNG ĐỂ THÂN THIỆN HƠN KHI KHÔNG CÓ CACHE
+    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Prudential chuyên nghiệp.
     
-    DỮ LIỆU KHÁCH HÀNG (JSON):
+    DỮ LIỆU KHÁCH HÀNG & HỢP ĐỒNG (JSON):
     ${jsonData}
     
-    ${cacheName ? '⚠️ LƯU Ý QUAN TRỌNG: Bạn đang được kết nối với KHO TÀI LIỆU SẢN PHẨM (Cached Context). Hãy trả lời dựa trên thông tin trong đó.' : 'Cảnh báo: Không tải được tài liệu sản phẩm. Chỉ trả lời dựa trên kiến thức chung.'}
+    ${cacheName ? '✅ ĐÃ KẾT NỐI KHO TÀI LIỆU SẢN PHẨM (Context Cache). Hãy ưu tiên tra cứu thông tin chi tiết từ các tài liệu này.' : '⚠️ CHẾ ĐỘ CƠ BẢN: Hiện chưa có tài liệu sản phẩm đính kèm (hoặc chưa tải lên). Hãy tư vấn dựa trên kiến thức chung về bảo hiểm Prudential và dữ liệu khách hàng được cung cấp ở trên.'}
 
     QUY TẮC:
-    1. Trả lời chính xác dựa trên tài liệu đính kèm.
-    2. Nếu tài liệu có thông tin chi tiết (ví dụ danh sách bệnh, điều khoản loại trừ), hãy trích dẫn.
-    3. Không bịa đặt.
+    1. Trả lời ngắn gọn, đúng trọng tâm, văn phong lịch sự.
+    2. Nếu không có tài liệu chi tiết, hãy gợi ý người dùng tải file PDF sản phẩm lên để bạn học.
+    3. Không bịa đặt thông tin điều khoản nếu không chắc chắn.
     `;
 
     // 3. Prepare History
