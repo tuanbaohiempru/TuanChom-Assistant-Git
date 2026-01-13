@@ -47,16 +47,14 @@ const getActiveCache = (): string | null => {
 const createProductCache = async (products: Product[]): Promise<string | null> => {
     if (!isServerAvailable || !functions) return null;
 
-    // --- FIX TYPE ERROR HERE ---
-    // Sử dụng biến trung gian 'url' để TypeScript hiểu kiểu dữ liệu chính xác
     const pdfUrls: string[] = [];
     
     products.forEach(p => {
         const url = p.pdfUrl; // Lấy giá trị ra biến cục bộ
         
-        // Chỉ lấy sản phẩm đang bán VÀ có link PDF (chuỗi không rỗng)
+        // FIX: Ép kiểu (url as string) để TypeScript không báo lỗi
         if (p.status === ProductStatus.ACTIVE && url && typeof url === 'string') {
-            pdfUrls.push(url);
+            pdfUrls.push(url as string);
         }
     });
 
@@ -130,14 +128,16 @@ const callAI = async (payload: any): Promise<string> => {
             });
             const msg = clientPayload.message || " ";
             const result = await chat.sendMessage({ message: msg });
-            return result.text;
+            // FIX: Xử lý trường hợp result.text là undefined
+            return result.text || "";
         } else {
             const result = await clientAI.models.generateContent({
                 model: modelId,
                 contents: clientPayload.contents,
                 config: config
             });
-            return result.text;
+            // FIX: Xử lý trường hợp result.text là undefined
+            return result.text || "";
         }
     } catch (clientError: any) {
         console.error("❌ Client AI Error:", clientError);
