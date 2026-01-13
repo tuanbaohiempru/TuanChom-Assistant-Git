@@ -5,7 +5,8 @@ import { GoogleGenAI } from "@google/genai";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Product } from "../types";
 
 // Initialize Client-side AI (Fallback)
-const getApiKey = () => {
+const getApiKey = (): string => {
+    // Ensure always returning a string, never undefined
     const envKey = process.env.API_KEY;
     if (envKey) return envKey;
     return localStorage.getItem('gemini_api_key') || '';
@@ -47,7 +48,7 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
     // NO SLICE LIMIT: Send ALL active PDFs
     const pdfUrls = products
         .filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl)
-        .map(p => p.pdfUrl as string);
+        .map(p => p.pdfUrl!); // Use non-null assertion operator (!) since filter guarantees existence
 
     if (pdfUrls.length === 0) return null;
 
@@ -167,7 +168,7 @@ export const chatWithData = async (
     const jsonData = prepareJsonContext(appState);
     
     // 2. Manage Cache (The Core Change)
-    let cacheName = getActiveCache();
+    let cacheName: string | null = getActiveCache();
     
     // If no cache, create it (Async but blocking for the first chat to ensure context)
     if (!cacheName) {
