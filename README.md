@@ -41,7 +41,19 @@ API_KEY=your_google_ai_studio_api_key
 ```
 *Lưu ý: Lấy API Key Gemini tại [Google AI Studio](https://aistudio.google.com/).*
 
-### 5. Deploy
+### 5. Cấu hình CORS cho Storage (QUAN TRỌNG)
+Để AI đọc được file PDF từ trình duyệt, bạn cần cấu hình CORS cho Storage Bucket.
+Mở Cloud Shell trên Google Console hoặc dùng `gsutil` trên máy:
+
+```bash
+# Tạo file cấu hình tạm
+echo '[{"origin": ["*"],"method": ["GET"],"maxAgeSeconds": 3600}]' > cors.json
+
+# Áp dụng (Thay tên bucket của bạn vào)
+gsutil cors set cors.json gs://[YOUR_BUCKET_NAME]
+```
+
+### 6. Deploy
 Cài đặt Firebase CLI nếu chưa có: `npm install -g firebase-tools`
 
 ```bash

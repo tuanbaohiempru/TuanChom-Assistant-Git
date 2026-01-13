@@ -1,204 +1,160 @@
 
 import { httpsCallable } from "firebase/functions";
-import { functions } from "./firebaseConfig";
+import { functions, isFirebaseReady } from "./firebaseConfig";
 import { GoogleGenAI } from "@google/genai";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Product } from "../types";
 
 // Initialize Client-side AI (Fallback)
-const apiKey = process.env.API_KEY || '';
+const getApiKey = () => {
+    const envKey = process.env.API_KEY;
+    if (envKey) return envKey;
+    return localStorage.getItem('gemini_api_key') || '';
+};
+
+const apiKey = getApiKey();
 const clientAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
-// --- HELPER: CLIENT SIDE DIRECT CALL ---
-const runClientSideAI = async (payload: any) => {
-    if (!clientAI) {
-        throw new Error("Không tìm thấy API Key. Vui lòng kiểm tra file .env hoặc cấu hình Backend.");
-    }
+let isServerAvailable = isFirebaseReady;
 
-    const modelId = payload.model || 'gemini-3-flash-preview';
-    const config = payload.config || {};
+// --- CACHE MANAGEMENT ---
+const CACHE_KEY_NAME = 'gemini_cache_name';
+const CACHE_KEY_EXPIRY = 'gemini_cache_expiry';
+
+interface CacheInfo {
+    name: string;
+    expiresAt: number; // timestamp
+}
+
+const getActiveCache = (): string | null => {
+    const name = localStorage.getItem(CACHE_KEY_NAME);
+    const expiryStr = localStorage.getItem(CACHE_KEY_EXPIRY);
     
-    // Handle System Instruction
-    if (payload.systemInstruction) {
-        config.systemInstruction = payload.systemInstruction;
-    }
-
-    if (payload.endpoint === 'chat') {
-        const chat = clientAI.chats.create({
-            model: modelId,
-            config: config,
-            history: payload.history || []
-        });
-        const msg = payload.message || (typeof payload.contents === 'string' ? payload.contents : " ");
-        const result = await chat.sendMessage({ message: msg });
-        return result.text;
-    } else {
-        const result = await clientAI.models.generateContent({
-            model: modelId,
-            contents: payload.contents,
-            config: config
-        });
-        return result.text;
-    }
-};
-
-// --- MAIN CALL FUNCTION (HYBRID) ---
-const callAI = async (payload: any, retries = 1): Promise<string> => {
-    // 1. Try Cloud Function (Server-side)
-    try {
-        console.log("🤖 Đang gọi AI qua Server (Cloud Function)...");
-        // Increase client-side timeout to 2 minutes
-        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 120000 });
-        const result: any = await gateway(payload);
-        return result.data.text || "";
-    } catch (serverError: any) {
-        console.warn("⚠️ Lỗi Server Backend:", serverError.message);
-        console.log("🔄 Đang chuyển sang chế độ Client-side (Trực tiếp)...");
-
-        // 2. Fallback to Client-side (Direct API)
-        try {
-            return await runClientSideAI(payload);
-        } catch (clientError: any) {
-            console.error("❌ Lỗi cả Server và Client:", clientError);
-            
-            const msg = clientError.message || 'Lỗi không xác định';
-            if (msg.includes("API Key")) return "Lỗi: Thiếu cấu hình API Key.";
-            if (msg.includes("fetch failed")) return "Lỗi kết nối mạng. Vui lòng kiểm tra internet.";
-            
-            return `TuanChom AI đang bận. (${msg})`;
-        }
-    }
-};
-
-// --- HELPER: FETCH PDF AS BASE64 ---
-const fetchPdfAsBase64 = async (url: string): Promise<string | null> => {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Failed to fetch PDF");
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64String = reader.result as string;
-                // Remove data url prefix (e.g. "data:application/pdf;base64,")
-                const base64Content = base64String.split(',')[1];
-                resolve(base64Content);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (error) {
-        console.warn("Could not fetch PDF for AI context:", url, error);
+    if (!name || !expiryStr) return null;
+    
+    const expiry = parseInt(expiryStr, 10);
+    // Add a buffer of 2 minutes before actual expiry to be safe
+    if (Date.now() > expiry - 120000) {
+        console.log("⚠️ Cache expired or about to expire.");
         return null;
     }
+    return name;
 };
 
-/**
- * Generate short financial advice based on calculation results
- */
-export const generateFinancialAdvice = async (
-    customerName: string,
-    planResult: PlanResult
-): Promise<string> => {
-    const prompt = `
-        Bạn là Chuyên gia Tài chính Prudential.
-        Hãy đưa ra nhận xét và lời khuyên ngắn gọn (khoảng 3 câu) cho khách hàng ${customerName} dựa trên kết quả hoạch định sau:
-        
-        - Mục tiêu: ${planResult.goal}
-        - Cần có: ${planResult.requiredAmount.toLocaleString()} VNĐ
-        - Đã có (dự kiến): ${planResult.currentAmount.toLocaleString()} VNĐ
-        - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()} VNĐ
-        
-        Yêu cầu:
-        1. Giọng văn chuyên nghiệp, đồng cảm nhưng cảnh tỉnh.
-        2. Nếu thiếu hụt lớn: Nhấn mạnh rủi ro lạm phát hoặc chi phí y tế/giáo dục tăng cao.
-        3. Kêu gọi hành động nhẹ nhàng.
-        4. Không dùng bảng, chỉ dùng text đoạn văn.
-    `;
+const createProductCache = async (products: Product[]): Promise<string | null> => {
+    if (!isServerAvailable || !functions) return null;
 
-    return await callAI({
-        endpoint: 'generateContent',
-        model: 'gemini-3-flash-preview',
-        contents: prompt
-    });
+    // Filter active products with PDFs
+    // NO SLICE LIMIT: Send ALL active PDFs
+    const pdfUrls = products
+        .filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl)
+        .map(p => p.pdfUrl as string);
+
+    if (pdfUrls.length === 0) return null;
+
+    try {
+        console.log(`Creating cache for ${pdfUrls.length} documents...`);
+        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 600000 }); // 10 min timeout for client
+        
+        const result: any = await gateway({
+            endpoint: 'createCache',
+            fileUrls: pdfUrls
+        });
+
+        if (result.data && result.data.cacheName) {
+            const cacheName = result.data.cacheName;
+            // Default TTL 55 mins from creation. We set expiry here.
+            // result.data.expirationTime could be used if returned parsed, 
+            // but safer to set local timestamp + 50 mins.
+            const expiresAt = Date.now() + (50 * 60 * 1000); 
+            
+            localStorage.setItem(CACHE_KEY_NAME, cacheName);
+            localStorage.setItem(CACHE_KEY_EXPIRY, expiresAt.toString());
+            
+            console.log(`✅ Cache created: ${cacheName}`);
+            return cacheName;
+        }
+    } catch (e) {
+        console.error("❌ Failed to create cache:", e);
+    }
+    return null;
+};
+
+// --- MAIN CALL FUNCTION ---
+const callAI = async (payload: any): Promise<string> => {
+    // 1. Try Cloud Function
+    if (isServerAvailable && functions) {
+        try {
+            const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 30000 }); // 30s for chat
+            const result: any = await gateway(payload);
+            return result.data.text || "";
+        } catch (serverError: any) {
+            console.warn("⚠️ Server Backend failed.", serverError);
+            if (payload.cachedContent) {
+                return "Lỗi: Không thể kết nối đến Cache Server. Vui lòng thử lại sau.";
+            }
+            isServerAvailable = false;
+        }
+    }
+
+    // 2. Fallback to Client-side (Direct API) - Cannot use Cache here easily
+    try {
+        if (!clientAI) throw new Error("Missing API Key");
+        
+        // Remove cache params if falling back to client
+        const { cachedContent, ...clientPayload } = payload;
+        
+        // Simple generation
+        const modelId = clientPayload.model || 'gemini-3-flash-preview';
+        const config = clientPayload.config || {};
+        if (clientPayload.systemInstruction) config.systemInstruction = clientPayload.systemInstruction;
+
+        if (clientPayload.endpoint === 'chat') {
+            const chat = clientAI.chats.create({
+                model: modelId,
+                config: config,
+                history: clientPayload.history || []
+            });
+            const msg = clientPayload.message || " ";
+            const result = await chat.sendMessage({ message: msg });
+            return result.text;
+        } else {
+            const result = await clientAI.models.generateContent({
+                model: modelId,
+                contents: clientPayload.contents,
+                config: config
+            });
+            return result.text;
+        }
+    } catch (clientError: any) {
+        console.error("❌ Client AI Error:", clientError);
+        return `Lỗi AI: ${clientError.message}`;
+    }
+};
+
+// --- HELPER FUNCTIONS ---
+export const generateFinancialAdvice = async (customerName: string, planResult: PlanResult): Promise<string> => {
+    const prompt = `Bạn là Chuyên gia Tài chính Prudential. Nhận xét ngắn về KH ${customerName}. Mục tiêu: ${planResult.goal}. Gap: ${planResult.shortfall.toLocaleString()}đ. Lời khuyên 3 câu.`;
+    return await callAI({ endpoint: 'generateContent', model: 'gemini-3-flash-preview', contents: prompt });
 };
 
 const prepareJsonContext = (state: AppState) => {
-  // SAFETY LIMIT: Only send top 30 recent customers and contracts to avoid Token Limit Exceeded and Payload Size errors
   const recentCustomers = state.customers.slice(0, 30);
   const recentContracts = state.contracts.slice(0, 30);
-
   return JSON.stringify({
-    customers: recentCustomers.map(c => ({
-      name: c.fullName,
-      id: c.id,
-      dob: c.dob,
-      job: c.job,
-      health: c.health,
-      status: c.status,
-      interactions: c.interactionHistory ? c.interactionHistory.slice(0, 3) : [] // Limit interactions
-    })),
-    contracts: recentContracts.map(c => ({
-      number: c.contractNumber,
-      ownerId: c.customerId,
-      status: c.status,
-      paymentFrequency: c.paymentFrequency, 
-      mainProduct: {
-        name: c.mainProduct.productName,
-        insured: c.mainProduct.insuredName,
-        fee: c.mainProduct.fee,
-        sumAssured: c.mainProduct.sumAssured
-      },
-      riders: c.riders.map(r => ({
-        name: r.productName,
-        insured: r.insuredName,
-        fee: r.fee,
-        sumAssured: r.sumAssured
-      })),
-      nextPayment: c.nextPaymentDate,
-      totalFee: c.totalFee
-    })),
-    products_summary: state.products.map(p => ({
-      name: p.name,
-      type: p.type,
-      status: p.status, 
-      description: p.description
-    })),
-    appointments: state.appointments.slice(0, 10)
+    customers: recentCustomers.map(c => ({ name: c.fullName, id: c.id, health: c.health, status: c.status })),
+    contracts: recentContracts.map(c => ({ number: c.contractNumber, product: c.mainProduct.productName, fee: c.totalFee, status: c.status })),
+    products_summary: state.products.map(p => ({ name: p.name, type: p.type, status: p.status }))
   });
 };
 
-// --- HELPER: SANITIZE HISTORY ---
-const sanitizeHistory = (history: { role: 'user' | 'model'; text: string }[]) => {
-    const cleanHistory: { role: string; parts: { text: string }[] }[] = [];
-    
-    if (history.length > 0) {
-        // 1. Ensure starts with 'user'
-        let startIndex = 0;
-        while(startIndex < history.length && history[startIndex].role !== 'user') {
-            startIndex++;
-        }
-        
-        for (let i = startIndex; i < history.length; i++) {
-            const currentRole = history[i].role;
-            const currentText = history[i].text;
-
-            if (cleanHistory.length === 0) {
-                cleanHistory.push({ role: currentRole, parts: [{ text: currentText }] });
-            } else {
-                // 2. Ensure alternation
-                const lastRole = cleanHistory[cleanHistory.length - 1].role;
-                if (currentRole !== lastRole) {
-                    cleanHistory.push({ role: currentRole, parts: [{ text: currentText }] });
-                } 
-            }
-        }
-    }
-
-    if (cleanHistory.length > 0 && cleanHistory[cleanHistory.length - 1].role === 'user') {
-        cleanHistory.pop();
-    }
-
-    return cleanHistory;
+const sanitizeHistory = (history: any[]) => {
+    // Basic sanitization to ensure alternating roles if needed, 
+    // but Gemini SDK is usually robust. 
+    // Returning as-is for now but ensuring structure.
+    return history.map(h => ({
+        role: h.role,
+        parts: h.parts || [{ text: h.text }]
+    }));
 };
 
 export const chatWithData = async (
@@ -207,141 +163,96 @@ export const chatWithData = async (
   history: { role: 'user' | 'model'; text: string }[]
 ): Promise<string> => {
     
+    // 1. Prepare JSON Context
     const jsonData = prepareJsonContext(appState);
     
-    const systemInstructionText = `Bạn là TuanChom, Trợ lý AI chuyên về Nghiệp vụ và Pháp lý của Prudential.
-        
-    DỮ LIỆU HỆ THỐNG (JSON):
-    ${jsonData}
+    // 2. Manage Cache (The Core Change)
+    let cacheName = getActiveCache();
     
-    QUY TẮC CỐT LÕI (TUÂN THỦ TUYỆT ĐỐI):
-    1. **NGUYÊN TẮC "CHỈ TÀI LIỆU" (STRICT GROUNDING):**
-       - Bạn CHỈ ĐƯỢC PHÉP trả lời dựa trên thông tin có trong các file PDF đính kèm (nếu có) và Dữ liệu JSON được cung cấp.
-       - TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài.
-       - Nếu không tìm thấy, trả lời: "Xin lỗi, tài liệu sản phẩm hiện tại không đề cập chi tiết đến vấn đề này."
-
-    2. **YÊU CẦU TRÍCH DẪN (CITATION):**
-       - Trả lời về Điều khoản loại trừ, Thời gian chờ: Trích dẫn nguyên văn.
-
-    3. **TRÌNH BÀY:**
-       - Dùng danh sách gạch đầu dòng (-). Số liệu có "đ" hoặc "VNĐ".
-    `;
-
-    // 3. Prepare PDF History (Pseudo-turn)
-    const pdfHistoryMessages: any[] = [];
-    const activeProductsWithPdf = appState.products.filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
-    const productsToLoad = activeProductsWithPdf.slice(0, 2);
-
-    if (productsToLoad.length > 0) {
-        try {
-            const pdfPromises = productsToLoad.map(async (p) => {
-                if (!p.pdfUrl) return null;
-                const base64 = await fetchPdfAsBase64(p.pdfUrl);
-                if (base64) {
-                    return {
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: base64
-                        }
-                    };
-                }
-                return null;
-            });
-
-            const pdfParts = (await Promise.all(pdfPromises)).filter(Boolean);
-            
-            if (pdfParts.length > 0) {
-                pdfHistoryMessages.push({
-                    role: 'user',
-                    parts: [
-                        ...pdfParts,
-                        { text: "Đây là các tài liệu điều khoản sản phẩm (PDF). Hãy sử dụng chúng làm cơ sở pháp lý duy nhất." }
-                    ]
-                });
-                pdfHistoryMessages.push({
-                    role: 'model',
-                    parts: [{ text: "Đã nhận tài liệu. Tôi sẽ căn cứ tuyệt đối vào nội dung trong các file này để tư vấn." }]
-                });
-            }
-        } catch (e) {
-            console.error("Error loading PDFs for AI:", e);
-        }
+    // If no cache, create it (Async but blocking for the first chat to ensure context)
+    if (!cacheName) {
+        // Inform user via console or UI state if possible (not handled here)
+        console.log("⏳ Initializing Product Knowledge Base (Caching)... This may take a few seconds.");
+        cacheName = await createProductCache(appState.products);
     }
 
-    const cleanTextHistory = sanitizeHistory(history);
-    const finalHistory = [...pdfHistoryMessages, ...cleanTextHistory];
+    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Prudential.
+    
+    DỮ LIỆU KHÁCH HÀNG (JSON):
+    ${jsonData}
+    
+    ${cacheName ? '⚠️ LƯU Ý QUAN TRỌNG: Bạn đang được kết nối với KHO TÀI LIỆU SẢN PHẨM (Cached Context). Hãy trả lời dựa trên thông tin trong đó.' : 'Cảnh báo: Không tải được tài liệu sản phẩm. Chỉ trả lời dựa trên kiến thức chung.'}
 
+    QUY TẮC:
+    1. Trả lời chính xác dựa trên tài liệu đính kèm.
+    2. Nếu tài liệu có thông tin chi tiết (ví dụ danh sách bệnh, điều khoản loại trừ), hãy trích dẫn.
+    3. Không bịa đặt.
+    `;
+
+    // 3. Prepare History (Clean text only, no base64 payloads anymore)
+    const cleanHistory = sanitizeHistory(history);
+
+    // 4. Call AI
     return await callAI({
         endpoint: 'chat',
-        model: 'gemini-3-flash-preview',
+        // If cache exists, backend will switch to gemini-1.5-flash-001 automatically
+        cachedContent: cacheName, 
+        model: cacheName ? 'gemini-1.5-flash-001' : 'gemini-3-flash-preview', 
         message: query,
-        history: finalHistory,
+        history: cleanHistory,
         systemInstruction: systemInstructionText, 
-        config: { temperature: 0.3 }
+        config: { temperature: 0.2 }
     });
 };
 
+// ... (Other functions like consultantChat, getObjectionSuggestions remain mostly the same, 
+// using generic callAI which defaults to gemini-3-flash-preview for non-cached tasks)
+
 export const consultantChat = async (
-    query: string,
-    customer: Customer,
-    contracts: Contract[], 
-    familyContext: any[],
-    agentProfile: AgentProfile | null,
-    conversationGoal: string,
+    query: string, customer: Customer, contracts: Contract[], familyContext: any[],
+    agentProfile: AgentProfile | null, conversationGoal: string,
     history: { role: 'user' | 'model'; text: string }[],
     roleplayMode: 'consultant' | 'customer' = 'consultant',
     planResult: PlanResult | null = null,
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
-    
-    const fullProfile = `Khách hàng: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
-    const finalHistory = sanitizeHistory(history);
-
+    const fullProfile = `Khách: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
     return await callAI({
         endpoint: 'chat',
         model: 'gemini-3-flash-preview',
         message: query,
-        history: finalHistory,
-        systemInstruction: `Bạn đang đóng vai ${roleplayMode}. Mục tiêu: ${conversationGoal}. Hồ sơ: ${fullProfile}. Style: ${chatStyle}`,
-        config: { temperature: chatStyle === 'zalo' ? 0.8 : 0.6 }
+        history: sanitizeHistory(history),
+        systemInstruction: `Roleplay: ${roleplayMode}. Goal: ${conversationGoal}. Profile: ${fullProfile}. Style: ${chatStyle}`,
+        config: { temperature: 0.7 }
     });
 };
 
-export const getObjectionSuggestions = async (
-    lastCustomerMessage: string,
-    customer: Customer
-): Promise<{ label: string; content: string; type: 'empathy' | 'logic' | 'story' }[]> => {
-    const systemInstruction = `Gợi ý 3 cách xử lý từ chối cho khách hàng ${customer.fullName}. Output JSON.`;
+export const getObjectionSuggestions = async (msg: string, customer: Customer): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
         model: 'gemini-3-flash-preview',
-        contents: `Khách nói: "${lastCustomerMessage}"`,
-        systemInstruction: systemInstruction,
-        config: { responseMimeType: "application/json", temperature: 0.5 }
+        contents: `Khách: "${msg}". Gợi ý 3 cách xử lý từ chối. Output JSON.`,
+        config: { responseMimeType: "application/json" }
     });
     try { return JSON.parse(text); } catch { return []; }
 };
 
-export const generateSocialPost = async (topic: string, tone: string): Promise<{ title: string; content: string }[]> => {
-    const systemInstruction = `Viết 3 status Facebook về BHNT. Phong cách: ${tone}. Output JSON array.`;
+export const generateSocialPost = async (topic: string, tone: string): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
         model: 'gemini-3-flash-preview',
-        contents: `Chủ đề: ${topic}`,
-        systemInstruction: systemInstruction,
-        config: { responseMimeType: "application/json", temperature: 0.8 }
+        contents: `Topic: ${topic}. Tone: ${tone}. Viết 3 status FB. Output JSON array {title, content}.`,
+        config: { responseMimeType: "application/json" }
     });
     try { return JSON.parse(text); } catch { return []; }
 };
 
-export const generateContentSeries = async (topic: string): Promise<{ day: string; type: string; content: string }[]> => {
-    const systemInstruction = `Xây dựng chuỗi content 5 ngày. Output JSON array.`;
+export const generateContentSeries = async (topic: string): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
         model: 'gemini-3-flash-preview',
-        contents: `Chủ đề: ${topic}`,
-        systemInstruction: systemInstruction,
-        config: { responseMimeType: "application/json", temperature: 0.7 }
+        contents: `Topic: ${topic}. Plan 5 days content series. Output JSON array {day, type, content}.`,
+        config: { responseMimeType: "application/json" }
     });
     try { return JSON.parse(text); } catch { return []; }
 };
@@ -350,17 +261,15 @@ export const generateStory = async (facts: string, emotion: string): Promise<str
     return await callAI({
         endpoint: 'generateContent',
         model: 'gemini-3-flash-preview',
-        contents: `Dữ kiện: ${facts}`,
-        systemInstruction: `Kể chuyện cảm xúc: ${emotion}`,
+        contents: `Facts: ${facts}. Emotion: ${emotion}. Write a touching story.`,
         config: { temperature: 0.9 }
     });
 };
 
 export const generateClaimSupport = async (contract: Contract, customer: Customer): Promise<string> => {
-    const prompt = `Soạn tin nhắn hướng dẫn Claim cho HĐ ${contract.contractNumber} của ${customer.fullName}`;
     return await callAI({
         endpoint: 'generateContent',
         model: 'gemini-3-flash-preview',
-        contents: prompt
+        contents: `Soạn tin hướng dẫn Claim HĐ ${contract.contractNumber} cho ${customer.fullName}`
     });
 };

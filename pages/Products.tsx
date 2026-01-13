@@ -468,7 +468,11 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                                             <select className="input-field text-xs py-1" value={testInputs.htvkPlan} onChange={e => setTestInputs({...testInputs, htvkPlan: e.target.value as HTVKPlan})}>
                                                                 {Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}
                                                             </select>
-                                                            <input type="text" placeholder="Package (Gói)" className="input-field text-xs py-1" value={testInputs.htvkPackage} onChange={e => setTestInputs({...testInputs, htvkPackage: e.target.value as any})} />
+                                                            <select className="input-field text-xs py-1" value={testInputs.htvkPackage} onChange={e => setTestInputs({...testInputs, htvkPackage: e.target.value as any})}>
+                                                                <option value={HTVKPackage.STANDARD}>Chuẩn</option>
+                                                                <option value={HTVKPackage.GOI_1}>Gói 1 (Có MT)</option>
+                                                                <option value={HTVKPackage.GOI_2}>Gói 2 (Không MT)</option>
+                                                            </select>
                                                         </>
                                                     )}
                                                 </div>
@@ -572,7 +576,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                 <div className="space-y-4">
                                     <div><label className="label-text">Chương trình</label><select className="input-field" value={inputData.htvkPlan} onChange={(e: any) => setInputData({...inputData, htvkPlan: e.target.value})}>{Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                     {(inputData.htvkPlan === HTVKPlan.TOAN_DIEN || inputData.htvkPlan === HTVKPlan.HOAN_HAO) && (
-                                        <div><label className="label-text">Loại thẻ</label><select className="input-field" value={inputData.htvkPackage} onChange={(e: any) => setInputData({...inputData, htvkPackage: e.target.value})}><option value={HTVKPackage.STANDARD}>Chuẩn</option><option value={HTVKPackage.PLUS_1}>Loại 1</option><option value={HTVKPackage.PLUS_2}>Loại 2</option></select></div>
+                                        <div><label className="label-text">Loại thẻ</label><select className="input-field" value={inputData.htvkPackage} onChange={(e: any) => setInputData({...inputData, htvkPackage: e.target.value})}><option value={HTVKPackage.STANDARD}>Chuẩn</option><option value={HTVKPackage.GOI_1}>Gói 1 (Có MT)</option><option value={HTVKPackage.GOI_2}>Gói 2 (Không MT)</option></select></div>
                                     )}
                                 </div>
                             )}

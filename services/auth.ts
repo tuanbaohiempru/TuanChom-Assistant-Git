@@ -9,10 +9,15 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider } from "./firebaseConfig";
 
+const checkAuthReady = () => {
+    if (!auth) throw new Error("Hệ thống chưa kết nối Firebase. Vui lòng kiểm tra file .env");
+};
+
 /**
  * Đăng nhập bằng Google
  */
 export const loginWithGoogle = async (): Promise<User | null> => {
+    checkAuthReady();
     try {
         const result = await signInWithPopup(auth, googleProvider);
         return result.user;
@@ -26,6 +31,7 @@ export const loginWithGoogle = async (): Promise<User | null> => {
  * Đăng nhập bằng Email/Password
  */
 export const loginWithEmail = async (email: string, pass: string): Promise<User> => {
+    checkAuthReady();
     try {
         const result = await signInWithEmailAndPassword(auth, email, pass);
         return result.user;
@@ -39,6 +45,7 @@ export const loginWithEmail = async (email: string, pass: string): Promise<User>
  * Đăng ký tài khoản mới bằng Email/Password
  */
 export const registerWithEmail = async (email: string, pass: string): Promise<User> => {
+    checkAuthReady();
     try {
         const result = await createUserWithEmailAndPassword(auth, email, pass);
         return result.user;
@@ -52,6 +59,7 @@ export const registerWithEmail = async (email: string, pass: string): Promise<Us
  * Đăng xuất
  */
 export const logout = async () => {
+    if (!auth) return;
     try {
         await signOut(auth);
     } catch (error) {
@@ -63,6 +71,10 @@ export const logout = async () => {
  * Lắng nghe trạng thái đăng nhập
  */
 export const subscribeToAuth = (callback: (user: User | null) => void) => {
+    if (!auth) {
+        callback(null);
+        return () => {};
+    }
     return onAuthStateChanged(auth, (user) => {
         callback(user);
     });

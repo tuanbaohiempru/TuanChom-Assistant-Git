@@ -1,17 +1,14 @@
 
-import * as firebaseApp from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFunctions } from "firebase/functions";
+import firebase from "firebase/compat/app";
+import "firebase/compat/firestore";
+import { getStorage, FirebaseStorage } from "firebase/storage";
+import { getAuth, Auth, GoogleAuthProvider } from "firebase/auth";
+import { getFunctions, Functions } from "firebase/functions";
 
 // --- Cấu hình Firebase ---
-// Ưu tiên sử dụng biến môi trường (Environment Variables) để dễ dàng deploy sang project khác.
-// Nếu không tìm thấy biến môi trường, sẽ sử dụng cấu hình mặc định (Demo Project).
 
-const defaultProject = "studio-5841594141-93fc7";
-
-const configFromEnv = {
+// 1. Cố gắng lấy từ biến môi trường (.env)
+const envConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY,
   authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.VITE_FIREBASE_PROJECT_ID,
@@ -20,39 +17,78 @@ const configFromEnv = {
   appId: process.env.VITE_FIREBASE_APP_ID
 };
 
-const defaultConfig = {
-  apiKey: "AIzaSyBucXUKg5bsEv7mmVA2q3t5g2zzKvpA7qQ",
-  authDomain: `${defaultProject}.firebaseapp.com`,
-  projectId: defaultProject,
-  storageBucket: `${defaultProject}.firebasestorage.app`,
-  messagingSenderId: "148389290808",
-  appId: "1:148389290808:web:33a5e679e7b0d54324d7cd"
+// 2. Nếu không có biến môi trường, thử lấy từ LocalStorage (Người dùng nhập tay)
+const getStoredConfig = () => {
+    try {
+        const stored = localStorage.getItem('firebase_config');
+        return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+        return null;
+    }
 };
 
-// Logic: Chỉ dùng Config từ Env nếu có Project ID hợp lệ, ngược lại dùng Default
-const useEnv = !!configFromEnv.projectId;
-const firebaseConfig = (useEnv ? configFromEnv : defaultConfig) as any;
+const storedConfig = getStoredConfig();
 
-console.log("Firebase Config Loaded:", { 
-    projectId: firebaseConfig.projectId, 
-    source: useEnv ? "Environment Variables (Production)" : "Default Hardcoded (Demo)" 
-});
+// Ưu tiên biến môi trường, sau đó đến LocalStorage
+const firebaseConfig = (envConfig.apiKey && envConfig.projectId) ? envConfig : storedConfig;
 
-if (!useEnv) {
-    console.warn(
-        "%cLƯU Ý: Ứng dụng đang chạy ở chế độ Demo với cấu hình mặc định.\n" +
-        "Để deploy cho cá nhân, vui lòng tạo file .env và cấu hình VITE_FIREBASE_... " +
-        "Xem hướng dẫn trong README.md",
-        "color: orange; font-weight: bold; font-size: 12px;"
-    );
+// Use 'any' to bypass strict type checks causing issues with mixed compat/modular types
+let app: any;
+let db: any; // Compat Firestore instance
+let storage: FirebaseStorage;
+let auth: Auth;
+let functions: Functions;
+let googleProvider: GoogleAuthProvider;
+let isFirebaseReady = false;
+
+// Kiểm tra tính hợp lệ của cấu hình
+if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
+    try {
+        console.log("✅ Firebase Config Loaded:", { projectId: firebaseConfig.projectId, source: envConfig.apiKey ? 'ENV' : 'LocalStorage' });
+        // Initialize using Compat API to ensure 'db' is created correctly even if modular exports fail
+        if (!firebase.apps.length) {
+            app = firebase.initializeApp(firebaseConfig);
+        } else {
+            app = firebase.app();
+        }
+        
+        db = app.firestore();
+        // Use Modular API getters where possible, passing the compat app instance (which is compatible)
+        storage = getStorage(app);
+        auth = getAuth(app);
+        functions = getFunctions(app); // Default region
+        googleProvider = new GoogleAuthProvider();
+        isFirebaseReady = true;
+    } catch (e) {
+        console.error("❌ Firebase Initialization Error:", e);
+        // Nếu config lưu trong storage bị lỗi, xóa đi để user nhập lại
+        if(storedConfig) {
+            console.warn("⚠️ Detected invalid localStorage config. Clearing...");
+            localStorage.removeItem('firebase_config');
+        }
+    }
+} else {
+    console.warn("⚠️ Firebase configuration missing. Waiting for user input.");
 }
 
-// Khởi tạo Firebase
-const app = (firebaseApp as any).initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const auth = getAuth(app);
-const functions = getFunctions(app); // Default region
-const googleProvider = new GoogleAuthProvider();
+export const saveFirebaseConfig = (config: any) => {
+    localStorage.setItem('firebase_config', JSON.stringify(config));
+    window.location.reload(); // Reload để apply config mới
+};
 
-export { db, storage, auth, functions, googleProvider };
+export const clearFirebaseConfig = () => {
+    localStorage.removeItem('firebase_config');
+    localStorage.removeItem('gemini_api_key');
+    window.location.reload();
+};
+
+// Cast to types to satisfy strict null checks elsewhere, 
+// but consumers must rely on isFirebaseReady or App.tsx guarding.
+export { 
+    db, 
+    storage, 
+    auth, 
+    functions, 
+    googleProvider, 
+    isFirebaseReady 
+};

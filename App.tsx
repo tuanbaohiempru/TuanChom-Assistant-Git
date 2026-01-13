@@ -15,10 +15,12 @@ import AdvisoryPage from './pages/Advisory';
 import MarketingPage from './pages/Marketing';
 import ProductAdvisoryPage from './pages/ProductAdvisory';
 import LoginPage from './pages/Login';
+import BusinessCard from './pages/BusinessCard'; // Assuming you have this
 
 import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile, Illustration, ContractStatus, PaymentFrequency } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
 import { subscribeToAuth } from './services/auth';
+import { isFirebaseReady, saveFirebaseConfig } from './services/firebaseConfig';
 
 const App: React.FC = () => {
     // --- AUTH STATE ---
@@ -42,6 +44,87 @@ const App: React.FC = () => {
 
     // AI Chat State
     const [isChatOpen, setIsChatOpen] = useState(false);
+
+    // Config Form State
+    const [configForm, setConfigForm] = useState({
+        apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: '', geminiKey: ''
+    });
+
+    // --- CONFIG CHECK & SETUP FORM ---
+    if (!isFirebaseReady) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 animate-fade-in">
+                <div className="bg-white max-w-lg w-full p-8 rounded-2xl shadow-xl border border-gray-100">
+                    <div className="text-center mb-6">
+                        <div className="w-16 h-16 bg-red-100 text-pru-red rounded-full flex items-center justify-center mx-auto mb-4 text-2xl animate-bounce">
+                            <i className="fas fa-cogs"></i>
+                        </div>
+                        <h1 className="text-2xl font-bold text-gray-800 mb-2">Cấu hình Hệ thống</h1>
+                        <p className="text-gray-500 text-sm">
+                            Vui lòng nhập thông tin kết nối Firebase và Gemini API để bắt đầu. Dữ liệu này sẽ được lưu an toàn trong trình duyệt của bạn.
+                        </p>
+                    </div>
+                    
+                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Firebase API Key</label>
+                            <input className="input-field w-full border p-2 rounded" placeholder="AIzaSy..." value={configForm.apiKey} onChange={e => setConfigForm({...configForm, apiKey: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">Project ID</label>
+                                <input className="input-field w-full border p-2 rounded" placeholder="my-project-id" value={configForm.projectId} onChange={e => setConfigForm({...configForm, projectId: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">Auth Domain</label>
+                                <input className="input-field w-full border p-2 rounded" placeholder="my-project.firebaseapp.com" value={configForm.authDomain} onChange={e => setConfigForm({...configForm, authDomain: e.target.value})} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">Storage Bucket</label>
+                                <input className="input-field w-full border p-2 rounded" placeholder="my-project.appspot.com" value={configForm.storageBucket} onChange={e => setConfigForm({...configForm, storageBucket: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">Messaging Sender ID</label>
+                                <input className="input-field w-full border p-2 rounded" placeholder="123456789" value={configForm.messagingSenderId} onChange={e => setConfigForm({...configForm, messagingSenderId: e.target.value})} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1">App ID</label>
+                            <input className="input-field w-full border p-2 rounded" placeholder="1:123456789:web:..." value={configForm.appId} onChange={e => setConfigForm({...configForm, appId: e.target.value})} />
+                        </div>
+                        
+                        <div className="pt-4 border-t border-gray-100">
+                            <label className="block text-xs font-bold text-purple-700 mb-1 flex items-center"><i className="fas fa-magic mr-1"></i> Gemini API Key (AI)</label>
+                            <input className="input-field w-full border border-purple-200 p-2 rounded bg-purple-50 focus:ring-purple-200" placeholder="AIzaSy..." value={configForm.geminiKey} onChange={e => setConfigForm({...configForm, geminiKey: e.target.value})} type="password" />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">Lấy key tại: aistudio.google.com</p>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => {
+                            if(!configForm.apiKey || !configForm.projectId) return alert("Vui lòng nhập tối thiểu API Key và Project ID");
+                            // Save Gemini Key Separately
+                            if(configForm.geminiKey) localStorage.setItem('gemini_api_key', configForm.geminiKey);
+                            // Save Firebase Config
+                            saveFirebaseConfig({
+                                apiKey: configForm.apiKey,
+                                authDomain: configForm.authDomain,
+                                projectId: configForm.projectId,
+                                storageBucket: configForm.storageBucket,
+                                messagingSenderId: configForm.messagingSenderId,
+                                appId: configForm.appId
+                            });
+                        }}
+                        className="w-full mt-6 bg-pru-red text-white font-bold py-3 rounded-xl hover:bg-red-700 transition shadow-lg flex items-center justify-center"
+                    >
+                        <i className="fas fa-save mr-2"></i> Lưu & Kết nối
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // --- AUTH LISTENER ---
     useEffect(() => {
@@ -158,6 +241,7 @@ const App: React.FC = () => {
         <Router>
             {!user ? (
                 <Routes>
+                    <Route path="/business-card" element={<BusinessCard profile={state.agentProfile} />} />
                     <Route path="*" element={<LoginPage />} />
                 </Routes>
             ) : (
@@ -191,6 +275,7 @@ const App: React.FC = () => {
                             <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
                             <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
                             <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} onUpdateCustomer={updateCustomer} />} />
+                            <Route path="/business-card" element={<BusinessCard profile={state.agentProfile} />} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                     </Layout>

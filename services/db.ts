@@ -1,16 +1,4 @@
 
-import { 
-    collection, 
-    onSnapshot, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    doc, 
-    query, 
-    orderBy,
-    QuerySnapshot,
-    DocumentData
-} from "firebase/firestore";
 import { db } from "./firebaseConfig";
 
 // Tên các Collection trong Firestore
@@ -31,15 +19,14 @@ const COLLECTIONS = {
  */
 export const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
     // Mặc định sắp xếp theo ngày tạo hoặc ID nếu không có field created_at
-    const q = query(collection(db, collectionName));
-    
-    return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-        const data = snapshot.docs.map(doc => ({
+    // Using Compat API syntax: db.collection()
+    return db.collection(collectionName).onSnapshot((snapshot: any) => {
+        const data = snapshot.docs.map((doc: any) => ({
             ...doc.data(),
             id: doc.id 
         }));
         callback(data);
-    }, (error) => {
+    }, (error: any) => {
         console.error(`Error fetching ${collectionName}:`, error);
     });
 };
@@ -50,7 +37,7 @@ export const subscribeToCollection = (collectionName: string, callback: (data: a
 export const addData = async (collectionName: string, data: any) => {
     try {
         const { id, ...cleanData } = data; 
-        await addDoc(collection(db, collectionName), cleanData);
+        await db.collection(collectionName).add(cleanData);
     } catch (e) {
         console.error("Error adding document: ", e);
         throw e;
@@ -62,9 +49,8 @@ export const addData = async (collectionName: string, data: any) => {
  */
 export const updateData = async (collectionName: string, id: string, data: any) => {
     try {
-        const docRef = doc(db, collectionName, id);
         const { id: dataId, ...cleanData } = data; 
-        await updateDoc(docRef, cleanData);
+        await db.collection(collectionName).doc(id).update(cleanData);
     } catch (e) {
         console.error("Error updating document: ", e);
         throw e;
@@ -76,7 +62,7 @@ export const updateData = async (collectionName: string, id: string, data: any) 
  */
 export const deleteData = async (collectionName: string, id: string) => {
     try {
-        await deleteDoc(doc(db, collectionName, id));
+        await db.collection(collectionName).doc(id).delete();
     } catch (e) {
         console.error("Error deleting document: ", e);
         throw e;

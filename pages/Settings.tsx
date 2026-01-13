@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { AgentProfile, SalesTargets } from '../types';
 import { uploadFile } from '../services/storage';
 import { CurrencyInput } from '../components/Shared';
+import { clearFirebaseConfig } from '../services/firebaseConfig';
 
 interface SettingsPageProps {
     profile: AgentProfile | null;
@@ -59,6 +60,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
         }
     };
 
+    const handleResetConfig = () => {
+        if(window.confirm('Bạn có chắc muốn xóa cấu hình kết nối Firebase & API Key? Ứng dụng sẽ tải lại và yêu cầu nhập thông tin mới.')) {
+            clearFirebaseConfig();
+        }
+    }
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto pb-10">
              <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Cài đặt hệ thống</h1>
@@ -89,7 +96,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
                     {/* INTERFACE SETTINGS */}
                     <div className="bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
                         <h3 className="font-bold text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">Giao diện</h3>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-indigo-900/20 text-indigo-400' : 'bg-yellow-50 text-yellow-600'}`}>
                                     <i className={`fas ${isDarkMode ? 'fa-moon' : 'fa-sun'}`}></i>
@@ -104,6 +111,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDarkMode ? 'bg-pru-red' : 'bg-gray-200'}`}
                             >
                                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isDarkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                        </div>
+
+                        {/* Reset Config Button */}
+                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                            <button 
+                                onClick={handleResetConfig}
+                                className="w-full py-2 text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg flex items-center justify-center transition"
+                            >
+                                <i className="fas fa-plug mr-2"></i> Đặt lại kết nối
                             </button>
                         </div>
                     </div>
