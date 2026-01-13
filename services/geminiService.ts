@@ -48,14 +48,15 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
     if (!isServerAvailable || !functions) return null;
 
     // --- FIX TYPE ERROR HERE ---
-    // Sử dụng vòng lặp tường minh để đảm bảo mảng kết quả chỉ chứa string
+    // Sử dụng biến trung gian 'url' để TypeScript hiểu kiểu dữ liệu chính xác
     const pdfUrls: string[] = [];
     
     products.forEach(p => {
-        // Chỉ lấy sản phẩm đang bán VÀ có link PDF
-        if (p.status === ProductStatus.ACTIVE && p.pdfUrl && typeof p.pdfUrl === 'string') {
-            // Ép kiểu tường minh để TS không báo lỗi
-            pdfUrls.push(p.pdfUrl as string);
+        const url = p.pdfUrl; // Lấy giá trị ra biến cục bộ
+        
+        // Chỉ lấy sản phẩm đang bán VÀ có link PDF (chuỗi không rỗng)
+        if (p.status === ProductStatus.ACTIVE && url && typeof url === 'string') {
+            pdfUrls.push(url);
         }
     });
 

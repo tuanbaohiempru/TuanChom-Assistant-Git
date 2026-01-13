@@ -39,7 +39,9 @@ let storage: FirebaseStorage;
 let auth: Auth;
 let functions: Functions;
 let googleProvider: GoogleAuthProvider;
-let isFirebaseReady = false;
+
+// EXPORT DIRECTLY HERE TO FIX IMPORT ERROR
+export let isFirebaseReady = false;
 
 // Kiểm tra tính hợp lệ của cấu hình
 if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
@@ -89,6 +91,5 @@ export {
     storage, 
     auth, 
     functions, 
-    googleProvider, 
-    isFirebaseReady 
+    googleProvider
 };
