@@ -20,17 +20,17 @@ const downloadFile = async (url, outputPath) => {
     await pipeline(response.body, fileStream);
 };
 
-// Cấu hình timeout 300s (5 phút) và memory cao hơn để xử lý tác vụ AI nặng
+// Cấu hình timeout 540s (9 phút) và memory cao hơn để xử lý tác vụ AI nặng
 exports.geminiGateway = onCall({ 
     cors: true, 
     maxInstances: 10,
-    timeoutSeconds: 540, // Tăng lên 9 phút cho việc upload nhiều file
-    memory: '1GiB' // Tăng RAM để xử lý file
+    timeoutSeconds: 540, 
+    memory: '1GiB' 
 }, async (request) => {
     
     // 1. Kiểm tra API Key tồn tại
     if (!API_KEY) {
-        console.error("ERROR: API_KEY is missing in environment variables. Check functions/.env");
+        console.error("ERROR: API_KEY is missing in environment variables. Check functions/.env or Cloud Functions secrets.");
         throw new HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
     }
 
@@ -63,7 +63,6 @@ exports.geminiGateway = onCall({
                     await downloadFile(fileUrl, tempFilePath);
                     
                     // Upload to Gemini Files API
-                    // Note: SDK might differ, using standard approach
                     const uploadResponse = await ai.files.uploadFile(tempFilePath, {
                         mimeType: 'application/pdf',
                         displayName: `Product Doc ${index}`
@@ -88,13 +87,12 @@ exports.geminiGateway = onCall({
             }
 
             // 2. Wait for files to be processed (Active)
-            // For simple PDFs, it's usually instant, but a small delay helps
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // 3. Create Cache
-            // TTL: 55 minutes (Free tier limits or cost optimization)
+            // Use gemini-3-flash-preview as it is the standard for fast tasks and context
             const cacheConfig = {
-                model: 'models/gemini-1.5-flash-001', // Must use 1.5 Flash for Caching
+                model: 'models/gemini-3-flash-preview', 
                 contents: uploadedFiles.map(f => ({
                     role: 'user',
                     parts: [{ fileData: { fileUri: f.fileUri, mimeType: f.mimeType } }]
@@ -116,9 +114,8 @@ exports.geminiGateway = onCall({
         }
     }
 
-    // --- ENDPOINT: FETCH URL (Legacy Proxy) ---
+    // --- ENDPOINT: FETCH URL (Legacy Proxy - Optional) ---
     if (endpoint === 'fetchUrl') {
-        // ... (Giữ nguyên logic cũ nếu cần fallback)
         if (!url) throw new HttpsError('invalid-argument', 'Missing URL.');
         try {
             const response = await fetch(url);
@@ -134,8 +131,8 @@ exports.geminiGateway = onCall({
 
     // --- ENDPOINT: CHAT / GENERATE CONTENT ---
     try {
-        // Switch model to 1.5 Flash if using cache, otherwise use requested model or default
-        const targetModel = cachedContent ? 'gemini-1.5-flash-001' : (model || 'gemini-3-flash-preview');
+        // Use gemini-3-flash-preview by default or if cachedContent is present (compatible model)
+        const targetModel = model || 'gemini-3-flash-preview';
         
         const cleanConfig = { ...(config || {}) };
         
@@ -162,7 +159,7 @@ exports.geminiGateway = onCall({
         };
 
         if (cachedContent) {
-            // When using cache, the model is initialized WITH the cache
+            // When using cache, pass it to the request
             initParams.cachedContent = cachedContent;
         }
 

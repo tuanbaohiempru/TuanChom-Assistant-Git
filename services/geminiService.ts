@@ -219,9 +219,9 @@ export const chatWithData = async (
     // 4. Call AI
     return await callAI({
         endpoint: 'chat',
-        // Nếu có cache, Backend sẽ tự động dùng model gemini-1.5-flash-001
+        // Nếu có cache, Backend sẽ dùng model gemini-3-flash-preview (hoặc tương đương)
         cachedContent: cacheName, 
-        model: cacheName ? 'gemini-1.5-flash-001' : 'gemini-3-flash-preview', 
+        model: 'gemini-3-flash-preview', 
         message: query,
         history: cleanHistory,
         systemInstruction: systemInstructionText, 
