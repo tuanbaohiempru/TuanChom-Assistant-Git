@@ -1,5 +1,5 @@
 
-import { httpsCallable } from "firebase/functions";
+import { httpsCallable, Functions } from "firebase/functions";
 import { functions, isFirebaseReady } from "./firebaseConfig";
 import { GoogleGenAI } from "@google/genai";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Product } from "../types";
@@ -54,7 +54,8 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
     products.forEach(p => {
         // Chỉ lấy sản phẩm đang bán VÀ có link PDF
         if (p.status === ProductStatus.ACTIVE && p.pdfUrl && typeof p.pdfUrl === 'string') {
-            pdfUrls.push(p.pdfUrl);
+            // Ép kiểu tường minh để TS không báo lỗi
+            pdfUrls.push(p.pdfUrl as string);
         }
     });
 
@@ -63,7 +64,8 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
 
     try {
         console.log(`Creating cache for ${pdfUrls.length} documents...`);
-        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 600000 }); // 10 phút timeout
+        // Ép kiểu functions as Functions để đảm bảo không undefined
+        const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 600000 }); // 10 phút timeout
         
         const result: any = await gateway({
             endpoint: 'createCache',
@@ -92,7 +94,8 @@ const callAI = async (payload: any): Promise<string> => {
     // 1. Ưu tiên dùng Cloud Function (Server-side)
     if (isServerAvailable && functions) {
         try {
-            const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 30000 }); // 30s timeout cho chat
+            // Ép kiểu functions as Functions để đảm bảo không undefined
+            const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 30000 }); // 30s timeout cho chat
             const result: any = await gateway(payload);
             return (result.data.text as string) || "";
         } catch (serverError: any) {
