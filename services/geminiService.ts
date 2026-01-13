@@ -6,13 +6,16 @@ import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, 
 
 // Initialize Client-side AI (Fallback)
 const getApiKey = (): string => {
-    // Ensure always returning a string, never undefined
-    const envKey = process.env.API_KEY;
-    if (envKey) return envKey;
+    // Ép kiểu an toàn cho process.env.API_KEY để tránh lỗi undefined
+    const envKey = process.env.API_KEY as string | undefined;
+    if (envKey && typeof envKey === 'string' && envKey.length > 0) {
+        return envKey;
+    }
     return localStorage.getItem('gemini_api_key') || '';
 };
 
 const apiKey = getApiKey();
+// Chỉ khởi tạo nếu có key, tránh lỗi crash app
 const clientAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 let isServerAvailable = isFirebaseReady;
@@ -33,7 +36,7 @@ const getActiveCache = (): string | null => {
     if (!name || !expiryStr) return null;
     
     const expiry = parseInt(expiryStr, 10);
-    // Add a buffer of 2 minutes before actual expiry to be safe
+    // Buffer 2 phút: Nếu còn dưới 2 phút thì coi như hết hạn để tạo mới
     if (Date.now() > expiry - 120000) {
         console.log("⚠️ Cache expired or about to expire.");
         return null;
@@ -44,17 +47,23 @@ const getActiveCache = (): string | null => {
 const createProductCache = async (products: Product[]): Promise<string | null> => {
     if (!isServerAvailable || !functions) return null;
 
-    // Filter active products with PDFs
-    // NO SLICE LIMIT: Send ALL active PDFs
-    const pdfUrls = products
-        .filter(p => p.status === ProductStatus.ACTIVE && p.pdfUrl)
-        .map(p => p.pdfUrl!); // Use non-null assertion operator (!) since filter guarantees existence
+    // --- FIX TYPE ERROR HERE ---
+    // Sử dụng vòng lặp tường minh để đảm bảo mảng kết quả chỉ chứa string
+    const pdfUrls: string[] = [];
+    
+    products.forEach(p => {
+        // Chỉ lấy sản phẩm đang bán VÀ có link PDF
+        if (p.status === ProductStatus.ACTIVE && p.pdfUrl && typeof p.pdfUrl === 'string') {
+            pdfUrls.push(p.pdfUrl);
+        }
+    });
 
+    // Nếu không có file nào thì không tạo cache
     if (pdfUrls.length === 0) return null;
 
     try {
         console.log(`Creating cache for ${pdfUrls.length} documents...`);
-        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 600000 }); // 10 min timeout for client
+        const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 600000 }); // 10 phút timeout
         
         const result: any = await gateway({
             endpoint: 'createCache',
@@ -62,10 +71,8 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
         });
 
         if (result.data && result.data.cacheName) {
-            const cacheName = result.data.cacheName;
-            // Default TTL 55 mins from creation. We set expiry here.
-            // result.data.expirationTime could be used if returned parsed, 
-            // but safer to set local timestamp + 50 mins.
+            const cacheName = result.data.cacheName as string;
+            // TTL 55 phút. Lưu local expiry là 50 phút để an toàn.
             const expiresAt = Date.now() + (50 * 60 * 1000); 
             
             localStorage.setItem(CACHE_KEY_NAME, cacheName);
@@ -82,30 +89,32 @@ const createProductCache = async (products: Product[]): Promise<string | null> =
 
 // --- MAIN CALL FUNCTION ---
 const callAI = async (payload: any): Promise<string> => {
-    // 1. Try Cloud Function
+    // 1. Ưu tiên dùng Cloud Function (Server-side)
     if (isServerAvailable && functions) {
         try {
-            const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 30000 }); // 30s for chat
+            const gateway = httpsCallable(functions, 'geminiGateway', { timeout: 30000 }); // 30s timeout cho chat
             const result: any = await gateway(payload);
-            return result.data.text || "";
+            return (result.data.text as string) || "";
         } catch (serverError: any) {
             console.warn("⚠️ Server Backend failed.", serverError);
+            // Nếu đang dùng Cache mà lỗi server thì không thể fallback xuống client (vì client không truy cập được cache server)
             if (payload.cachedContent) {
-                return "Lỗi: Không thể kết nối đến Cache Server. Vui lòng thử lại sau.";
+                return "Lỗi: Không thể kết nối đến Cache Server. Vui lòng thử lại sau hoặc kiểm tra đường truyền.";
             }
+            // Nếu lỗi khác, thử fallback xuống client
             isServerAvailable = false;
         }
     }
 
-    // 2. Fallback to Client-side (Direct API) - Cannot use Cache here easily
+    // 2. Fallback xuống Client-side (Direct API)
+    // Lưu ý: Client-side không hỗ trợ Context Caching bảo mật như Server, nên tính năng sẽ hạn chế hơn.
     try {
         if (!clientAI) throw new Error("Missing API Key");
         
-        // Remove cache params if falling back to client
+        // Loại bỏ cachedContent khỏi payload vì client không dùng chung cache với server theo cách này
         const { cachedContent, ...clientPayload } = payload;
         
-        // Simple generation
-        const modelId = clientPayload.model || 'gemini-3-flash-preview';
+        const modelId = (clientPayload.model as string) || 'gemini-3-flash-preview';
         const config = clientPayload.config || {};
         if (clientPayload.systemInstruction) config.systemInstruction = clientPayload.systemInstruction;
 
@@ -149,9 +158,6 @@ const prepareJsonContext = (state: AppState) => {
 };
 
 const sanitizeHistory = (history: any[]) => {
-    // Basic sanitization to ensure alternating roles if needed, 
-    // but Gemini SDK is usually robust. 
-    // Returning as-is for now but ensuring structure.
     return history.map(h => ({
         role: h.role,
         parts: h.parts || [{ text: h.text }]
@@ -170,10 +176,10 @@ export const chatWithData = async (
     // 2. Manage Cache (The Core Change)
     let cacheName: string | null = getActiveCache();
     
-    // If no cache, create it (Async but blocking for the first chat to ensure context)
+    // Nếu chưa có cache hoặc cache hết hạn -> Tạo mới
     if (!cacheName) {
-        // Inform user via console or UI state if possible (not handled here)
         console.log("⏳ Initializing Product Knowledge Base (Caching)... This may take a few seconds.");
+        // Hàm này giờ trả về string | null an toàn
         cacheName = await createProductCache(appState.products);
     }
 
@@ -190,13 +196,13 @@ export const chatWithData = async (
     3. Không bịa đặt.
     `;
 
-    // 3. Prepare History (Clean text only, no base64 payloads anymore)
+    // 3. Prepare History
     const cleanHistory = sanitizeHistory(history);
 
     // 4. Call AI
     return await callAI({
         endpoint: 'chat',
-        // If cache exists, backend will switch to gemini-1.5-flash-001 automatically
+        // Nếu có cache, Backend sẽ tự động dùng model gemini-1.5-flash-001
         cachedContent: cacheName, 
         model: cacheName ? 'gemini-1.5-flash-001' : 'gemini-3-flash-preview', 
         message: query,
@@ -205,9 +211,6 @@ export const chatWithData = async (
         config: { temperature: 0.2 }
     });
 };
-
-// ... (Other functions like consultantChat, getObjectionSuggestions remain mostly the same, 
-// using generic callAI which defaults to gemini-3-flash-preview for non-cached tasks)
 
 export const consultantChat = async (
     query: string, customer: Customer, contracts: Contract[], familyContext: any[],
