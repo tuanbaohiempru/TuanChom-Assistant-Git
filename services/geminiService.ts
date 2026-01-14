@@ -181,7 +181,87 @@ export const consultantChat = async (
     planResult: PlanResult | null = null,
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
-    const fullProfile = `Khách: ${customer.fullName}, Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}`;
+    
+    // --- BUILD CONTEXT STRINGS ---
+    
+    // 1. Agent Profile Context (Fix for Generic Greeting)
+    let agentContext = "Tên bạn: Tư vấn viên Prudential.";
+    if (agentProfile) {
+        agentContext = `
+        THÔNG TIN CỦA BẠN (TƯ VẤN VIÊN):
+        - Họ tên: ${agentProfile.fullName} (Hãy dùng tên này để xưng hô/giới thiệu)
+        - Danh hiệu: ${agentProfile.title}
+        - Đơn vị/Văn phòng: ${agentProfile.office || "Prudential Vietnam"}
+        `;
+    }
+
+    // 2. Customer Context
+    const customerContext = `
+    THÔNG TIN KHÁCH HÀNG:
+    - Họ tên: ${customer.fullName}
+    - Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}
+    - Nghề nghiệp: ${customer.job}
+    - Tình trạng: ${customer.status}
+    - Mối quan tâm: ${customer.analysis?.keyConcerns || 'Chưa rõ'}
+    - Tính cách (DISC): ${customer.analysis?.personality || 'Chưa rõ'}
+    `;
+
+    // 3. Family & Contracts Context
+    const contractInfo = contracts.length > 0 
+        ? contracts.map(c => `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status})`).join('\n') 
+        : "Chưa có hợp đồng nào.";
+    
+    const familyInfo = familyContext.length > 0
+        ? familyContext.map(f => `- ${f.relationship}: ${f.name} (${f.age} tuổi)`).join('\n')
+        : "Chưa có thông tin gia đình.";
+
+    // 4. Financial Plan Context (If available)
+    let planContext = "";
+    if (planResult) {
+        planContext = `
+        KẾT QUẢ HOẠCH ĐỊNH TÀI CHÍNH VỪA THỰC HIỆN:
+        - Mục tiêu: ${planResult.goal}
+        - Cần có: ${planResult.requiredAmount.toLocaleString()}đ
+        - Đã có: ${planResult.currentAmount.toLocaleString()}đ
+        - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()}đ
+        -> Hãy dùng con số thiếu hụt này để khơi gợi nhu cầu.
+        `;
+    }
+
+    // --- SYSTEM PROMPT CONSTRUCTION ---
+    const systemInstruction = `
+    BỐI CẢNH ROLEPLAY:
+    Bạn đang tham gia một buổi mô phỏng tư vấn bảo hiểm (Roleplay).
+    
+    VAI TRÒ CỦA BẠN: ${roleplayMode === 'consultant' ? 'TƯ VẤN VIÊN (Người bán)' : 'KHÁCH HÀNG (Người mua)'}.
+    
+    ${roleplayMode === 'consultant' ? agentContext : ''}
+    
+    ${customerContext}
+    
+    THÔNG TIN BỔ SUNG:
+    - Hợp đồng hiện tại:
+    ${contractInfo}
+    - Gia đình:
+    ${familyInfo}
+    ${planContext}
+    
+    MỤC TIÊU CUỘC HỘI THOẠI:
+    ${conversationGoal}
+    
+    PHONG CÁCH GIAO TIẾP:
+    ${chatStyle === 'zalo' ? '- Thân mật, ngắn gọn, dùng icon/emoji (Phong cách chat Zalo/Messenger).' : '- Chuyên nghiệp, lịch sự, ân cần, câu từ chỉnh chu.'}
+    
+    HƯỚNG DẪN HÀNH ĐỘNG:
+    ${roleplayMode === 'consultant' 
+        ? `1. Hãy đóng vai Tư vấn viên ${agentProfile?.fullName || 'Prudential'}.
+           2. Khi bắt đầu hoặc chào hỏi, BẮT BUỘC dùng tên thật của bạn (${agentProfile?.fullName}) và đơn vị (${agentProfile?.office}). TUYỆT ĐỐI KHÔNG dùng placeholder như [Tên của bạn].
+           3. Dẫn dắt câu chuyện theo mục tiêu đề ra.` 
+        : `1. Hãy đóng vai Khách hàng ${customer.fullName}.
+           2. Phản ứng dựa trên tính cách: ${customer.analysis?.personality}.
+           3. Đưa ra lời từ chối hoặc thắc mắc phù hợp với hoàn cảnh.`}
+    `;
+
     const cleanHistory = sanitizeHistory(history);
 
     try {
@@ -190,7 +270,7 @@ export const consultantChat = async (
             model: DEFAULT_MODEL,
             message: query,
             history: cleanHistory,
-            systemInstruction: `Roleplay: ${roleplayMode}. Goal: ${conversationGoal}. Profile: ${fullProfile}. Style: ${chatStyle}`,
+            systemInstruction: systemInstruction,
             config: { temperature: 0.7 }
         });
     } catch (e) {

@@ -26,7 +26,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false); 
     const [isEditing, setIsEditing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'contracts' | 'history'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'health' | 'analysis' | 'family' | 'contracts' | 'illustrations' | 'history'>('info');
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
     
     // Quick Note State
@@ -77,6 +77,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
 
     // Helper to get items for current form customer
     const customerContracts = contracts.filter(c => c.customerId === formData.id);
+    const customerIllustrations = illustrations.filter(ill => ill.customerId === formData.id);
     
     const handleOpenAdd = () => {
         setFormData(defaultCustomer);
@@ -211,6 +212,21 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
 
     const handleBatchSave = async (validCustomers: Customer[]) => { await Promise.all(validCustomers.map(c => onAdd(c))); };
 
+    const handleConvertIllustration = async (ill: Illustration) => {
+        if (!onConvertIllustration) return;
+        if (window.confirm(`Bạn có chắc muốn chốt hợp đồng từ bảng minh họa "${ill.mainProduct.productName}"?`)) {
+            await onConvertIllustration(ill, formData.id);
+            alert("Đã tạo hợp đồng mới thành công! Vui lòng cập nhật thêm thông tin chi tiết.");
+        }
+    };
+
+    const handleDeleteIllustration = async (id: string) => {
+        if (!onDeleteIllustration) return;
+        if (window.confirm("Bạn có chắc muốn xóa bảng minh họa này?")) {
+            await onDeleteIllustration(id);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Header & Filters (Preserved) */}
@@ -284,6 +300,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                             <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'history' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Lịch sử & Ghi chú</button>
                             <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Sức khỏe</button>
                             <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Hợp đồng <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
+                            <button onClick={() => setActiveTab('illustrations')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'illustrations' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Bảng minh họa <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full ml-1">{customerIllustrations.length}</span></button>
                             <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Gia đình</button>
                             <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Phân tích</button>
                         </div>
@@ -359,7 +376,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                 </div>
                             )}
 
-                            {/* TAB: FAMILY (Implemented) */}
+                            {/* TAB: FAMILY */}
                             {activeTab === 'family' && (
                                 <div className="space-y-6">
                                     {/* Add Relationship Form */}
@@ -454,7 +471,66 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                     ) : <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">Chưa có hợp đồng nào.</div>}
                                 </div>
                             )}
+
+                            {/* TAB: ILLUSTRATIONS */}
+                            {activeTab === 'illustrations' && (
+                                <div className="space-y-4">
+                                    <div className="flex justify-end mb-2">
+                                        <button 
+                                            onClick={() => { setShowModal(false); navigate('/product-advisory', { state: { customerId: formData.id } }); }} 
+                                            className="text-xs bg-purple-100 text-purple-700 font-bold px-3 py-1.5 rounded-lg hover:bg-purple-200 transition"
+                                        >
+                                            <i className="fas fa-plus mr-1"></i> Tạo bảng minh họa mới
+                                        </button>
+                                    </div>
+                                    {customerIllustrations.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {customerIllustrations.map(ill => (
+                                                <div key={ill.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 hover:shadow-md transition relative group">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">{ill.mainProduct.productName}</h4>
+                                                            <p className="text-xs text-gray-500 mt-0.5">Ngày tạo: {formatDateVN(ill.createdAt.split('T')[0])}</p>
+                                                        </div>
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${ill.status === 'CONVERTED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{ill.status === 'CONVERTED' ? 'Đã chốt' : 'Dự thảo'}</span>
+                                                    </div>
+                                                    
+                                                    <div className="flex justify-between items-end">
+                                                        <div>
+                                                            <p className="text-xs text-gray-500 mb-1">Riders: {ill.riders.length}</p>
+                                                            <p className="text-pru-red font-bold">{ill.totalFee.toLocaleString()} đ</p>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            {ill.status !== 'CONVERTED' && (
+                                                                <button 
+                                                                    onClick={() => handleConvertIllustration(ill)}
+                                                                    className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-green-700 shadow-sm"
+                                                                    title="Chuyển thành Hợp đồng chờ thẩm định"
+                                                                >
+                                                                    Chốt HĐ
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => handleDeleteIllustration(ill.id)}
+                                                                className="bg-gray-100 dark:bg-gray-700 text-red-500 text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-red-50 dark:hover:bg-red-900/30"
+                                                                title="Xóa"
+                                                            >
+                                                                <i className="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl">
+                                            Chưa có bảng minh họa nào.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             
+                            {/* TAB: ANALYSIS */}
                             {activeTab === 'analysis' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
