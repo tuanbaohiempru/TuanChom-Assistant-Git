@@ -1,13 +1,18 @@
 
-// Load biến môi trường từ file .env (QUAN TRỌNG)
+// Load biến môi trường từ file .env
 require('dotenv').config();
 
-const functions = require("firebase-functions");
+// Sử dụng Cloud Functions V2 để có timeout cao hơn và hiệu năng tốt hơn
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { GoogleGenAI } = require("@google/genai");
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { pipeline } = require('stream/promises');
+
+// Cấu hình Global cho V2: Timeout 300s (5 phút), RAM 512MB
+setGlobalOptions({ maxInstances: 10, timeoutSeconds: 300, memory: '512MiB' });
 
 // Lấy API Key từ biến môi trường
 const API_KEY = process.env.API_KEY;
@@ -20,29 +25,25 @@ const downloadFile = async (url, outputPath) => {
     await pipeline(response.body, fileStream);
 };
 
-// GEN 1 Cloud Function
-exports.geminiGateway = functions
-    .runWith({
-        timeoutSeconds: 540,
-        memory: '1GB',
-        maxInstances: 10
-    })
-    .https.onCall(async (data, context) => {
-    
-    // 1. Kiểm tra API Key tồn tại
+// Export Function 'geminiGateway' dùng V2 onCall
+exports.geminiGateway = onCall(async (request) => {
+    // Trong V2, dữ liệu nằm trong request.data
+    const data = request.data; 
+
+    // 1. Kiểm tra API Key
     if (!API_KEY) {
-        console.error("ERROR: API_KEY is missing in environment variables.");
-        throw new functions.https.HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
+        console.error("ERROR: API_KEY is missing.");
+        throw new HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
     }
 
     if (!data) {
-        throw new functions.https.HttpsError('invalid-argument', 'Request body is missing.');
+        throw new HttpsError('invalid-argument', 'Request body is missing.');
     }
 
     const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls, cachedContent } = data;
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-    // Use consistent model for caching. 'gemini-1.5-flash-001' is Stable for Context Caching.
+    // Model chuẩn cho Context Caching (Dùng 1.5 Flash vì ổn định và rẻ)
     const DEFAULT_MODEL = 'gemini-1.5-flash-001'; 
 
     // --- ENDPOINT: CREATE CACHE (Context Caching) ---
@@ -55,18 +56,19 @@ exports.geminiGateway = functions
         const uploadedFiles = [];
 
         try {
-            console.log(`[Cache] Starting to process ${fileUrls.length} files...`);
+            console.log(`[Cache] Processing ${fileUrls.length} PDF files...`);
             
             // 1. Download and Upload Files to Gemini
             for (const [index, fileUrl] of fileUrls.entries()) {
                 if (!fileUrl) continue;
-                const tempFilePath = path.join(tempDir, `doc_${index}.pdf`);
+                // Tạo tên file ngẫu nhiên để tránh trùng lặp
+                const tempFilePath = path.join(tempDir, `doc_${Date.now()}_${index}.pdf`);
                 
                 try {
-                    // Download to temp
+                    // Download file từ Firebase Storage về temp server
                     await downloadFile(fileUrl, tempFilePath);
                     
-                    // Upload to Gemini Files API
+                    // Upload lên Gemini Files API
                     const uploadResponse = await ai.files.uploadFile(tempFilePath, {
                         mimeType: 'application/pdf',
                         displayName: `Product Doc ${index}`
@@ -77,8 +79,8 @@ exports.geminiGateway = functions
                         mimeType: uploadResponse.file.mimeType
                     });
                     
-                    // Cleanup temp file immediately
-                    fs.unlinkSync(tempFilePath);
+                    // Xóa file temp ngay để giải phóng bộ nhớ
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
                     
                 } catch (err) {
                     console.error(`[Cache] Error processing file ${index}:`, err);
@@ -89,11 +91,12 @@ exports.geminiGateway = functions
                 throw new Error("Failed to upload any files to Gemini.");
             }
 
-            // 2. Wait for files to be processed
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // 2. Wait for files to be ACTIVE (Quan trọng: Gemini cần thời gian xử lý file)
+            // Đợi 5 giây để chắc chắn file đã sẵn sàng
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
             // 3. Create Cache
-            // TTL 60 minutes
+            // TTL 60 minutes (3600s)
             const cacheConfig = {
                 model: model || DEFAULT_MODEL, 
                 contents: uploadedFiles.map(f => ({
@@ -108,18 +111,19 @@ exports.geminiGateway = functions
 
             return { 
                 cacheName: cacheResponse.name, 
-                expirationTime: cacheResponse.expireTime 
+                expirationTime: cacheResponse.expireTime,
+                fileCount: uploadedFiles.length
             };
 
         } catch (error) {
             console.error("[Cache Error]", error);
-            throw new functions.https.HttpsError('internal', error.message || 'Failed to create cache');
+            throw new HttpsError('internal', error.message || 'Failed to create cache');
         }
     }
 
     // --- ENDPOINT: FETCH URL (Legacy Proxy) ---
     if (endpoint === 'fetchUrl') {
-        if (!url) throw new functions.https.HttpsError('invalid-argument', 'Missing URL.');
+        if (!url) throw new HttpsError('invalid-argument', 'Missing URL.');
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
@@ -128,7 +132,7 @@ exports.geminiGateway = functions
             const base64 = buffer.toString('base64');
             return { base64 };
         } catch (e) {
-            throw new functions.https.HttpsError('internal', 'Could not fetch file server-side.');
+            throw new HttpsError('internal', 'Could not fetch file server-side.');
         }
     }
 
@@ -137,8 +141,6 @@ exports.geminiGateway = functions
         const targetModel = model || DEFAULT_MODEL;
         
         const cleanConfig = { ...(config || {}) };
-        
-        // Clean undefined keys
         Object.keys(cleanConfig).forEach(key => {
             if (cleanConfig[key] === undefined || cleanConfig[key] === null) delete cleanConfig[key];
         });
@@ -154,14 +156,12 @@ exports.geminiGateway = functions
             } catch (e) { console.warn("Instruction parse error", e); }
         }
 
-        // Handle Cached Content Config
         let initParams = {
             model: targetModel,
             config: cleanConfig,
         };
 
         if (cachedContent) {
-            // Important: cachedContent must be valid and exist on Google's side.
             initParams.cachedContent = cachedContent;
         }
 
@@ -177,7 +177,6 @@ exports.geminiGateway = functions
             const result = await chat.sendMessage({ message: msgContent });
             resultText = result.text;
         } else {
-            // Generate Content
             let formattedContents = contents;
             if (typeof contents === 'string') {
                 formattedContents = { parts: [{ text: contents }] };
@@ -193,16 +192,13 @@ exports.geminiGateway = functions
 
     } catch (error) {
         console.error("[Gemini API Error Log]", error.message);
-        
-        // Return specific error message to client for Auto-healing handling
         const clientMessage = error.message || 'Lỗi không xác định từ AI Server';
         
-        // Maps SDK errors to HTTP errors
         let code = 'internal';
         if (clientMessage.includes('API key')) code = 'permission-denied';
-        else if (error.status === 404 || clientMessage.includes('not found')) code = 'not-found'; // Crucial for cache miss
+        else if (error.status === 404 || clientMessage.includes('not found')) code = 'not-found';
         else if (error.status === 429) code = 'resource-exhausted';
         
-        throw new functions.https.HttpsError(code, clientMessage);
+        throw new HttpsError(code, clientMessage);
     }
 });

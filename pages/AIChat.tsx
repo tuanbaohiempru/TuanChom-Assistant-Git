@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AppState } from '../types';
+import { AppState, ProductStatus } from '../types';
 import { chatWithData } from '../services/geminiService';
 import { cleanMarkdownForClipboard } from '../components/Shared';
 
@@ -20,10 +21,10 @@ declare global {
 
 const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
   const location = useLocation();
-  const [isExpanded, setIsExpanded] = useState(false); // False = Floating, True = Side Dock
+  const [isExpanded, setIsExpanded] = useState(false);
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([
-    { role: 'model', text: 'Xin chào! Tôi là **TuanChom**. \nTôi có thể giúp bạn tra cứu nhanh:\n- Thông tin hợp đồng & phí\n- Quyền lợi & Điều khoản sản phẩm\n- Lịch sử chăm sóc khách hàng' }
+    { role: 'model', text: 'Xin chào! Tôi là **TuanChom**. \nTôi có thể giúp bạn tra cứu nhanh:\n- Thông tin hợp đồng & phí\n- Quyền lợi & Điều khoản sản phẩm (đọc từ file PDF)\n- Lịch sử chăm sóc khách hàng' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -35,6 +36,9 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Check valid files for UI indicator
+  const hasPdfFiles = state.products.some(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -42,7 +46,6 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
   useEffect(() => {
     if (isOpen) {
         scrollToBottom();
-        // Auto focus input when opened
         setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [messages, isOpen, isExpanded]);
@@ -151,14 +154,12 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
     return html;
   };
 
-  // Z-INDEX FIX: Container must be higher than backdrop (z-50 vs z-60)
   const containerClasses = isExpanded
     ? "fixed top-0 right-0 h-full w-[500px] max-w-full bg-white shadow-2xl flex flex-col border-l border-gray-200 z-[70] transition-all duration-300 ease-in-out" 
     : "fixed top-20 right-6 w-[400px] max-w-[90vw] h-[600px] max-h-[70vh] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden transform transition-all ease-in-out duration-300 z-[60]";
 
   return (
     <>
-      {/* Dimmed Background: z-index must be LOWER than chat container */}
       {isOpen && (
         <div 
             className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[55] transition-opacity"
@@ -166,7 +167,6 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
         />
       )}
 
-      {/* Main Chat Container */}
       {isOpen && (
         <div className={`${containerClasses} animate-fade-in`}>
           
@@ -178,10 +178,13 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                 </div>
                 <div>
                     <h3 className="font-bold text-base">TuanChom AI</h3>
-                    <p className="text-xs opacity-90 flex items-center">
-                        <span className="w-2 h-2 bg-green-400 rounded-full mr-1.5 animate-pulse"></span>
-                        Đang sẵn sàng
-                    </p>
+                    {hasPdfFiles ? (
+                        <p className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full inline-flex items-center mt-1">
+                            <i className="fas fa-book mr-1"></i> Đã kết nối tài liệu
+                        </p>
+                    ) : (
+                        <p className="text-[10px] opacity-80 mt-1">Chưa có tài liệu sản phẩm</p>
+                    )}
                 </div>
             </div>
             <div className="flex gap-1">
@@ -227,7 +230,6 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                       msg.text
                   )}
 
-                  {/* Smart Copy Button for Model Messages */}
                   {msg.role === 'model' && (
                       <button 
                           onClick={() => handleCopy(msg.text, idx)}
@@ -236,10 +238,9 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                               ? 'bg-green-100 text-green-600 opacity-100' 
                               : 'bg-gray-100 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100'
                           }`}
-                          title="Sao chép (Đã làm sạch cho Zalo)"
+                          title="Sao chép"
                       >
                           <i className={`fas ${copiedIndex === idx ? 'fa-check' : 'fa-copy'} text-xs`}></i>
-                          {copiedIndex === idx && <span className="text-[10px] font-bold">Đã chép</span>}
                       </button>
                   )}
                 </div>
@@ -256,6 +257,7 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                     <div className="w-2 h-2 bg-pru-red/60 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></div>
                     <div className="w-2 h-2 bg-pru-red rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></div>
                   </div>
+                  <p className="text-[10px] text-gray-400 mt-2 italic">Đang tra cứu tài liệu...</p>
                 </div>
               </div>
             )}
@@ -280,7 +282,7 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                     ref={inputRef}
                     type="text"
                     className="w-full pl-14 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-300 transition-all text-gray-700"
-                    placeholder={isListening ? "Đang nghe..." : "Nhập câu hỏi tại đây..."}
+                    placeholder={isListening ? "Đang nghe..." : "Nhập câu hỏi..."}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}

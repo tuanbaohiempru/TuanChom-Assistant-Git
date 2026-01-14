@@ -22,13 +22,8 @@ let isServerAvailable = isFirebaseReady;
 const CACHE_KEY_NAME = 'gemini_cache_name';
 const CACHE_KEY_EXPIRY = 'gemini_cache_expiry';
 
-// MODEL CHUẨN CHO CONTEXT CACHING (Dùng 1.5 Flash vì độ ổn định cao với tính năng này)
+// MODEL CHUẨN CHO CONTEXT CACHING
 const CACHE_MODEL = 'gemini-1.5-flash-001'; 
-
-interface CacheInfo {
-    name: string;
-    expiresAt: number; // timestamp
-}
 
 const getActiveCache = (): string | null => {
     const name = localStorage.getItem(CACHE_KEY_NAME);
@@ -37,7 +32,7 @@ const getActiveCache = (): string | null => {
     if (!name || !expiryStr) return null;
     
     const expiry = parseInt(expiryStr, 10);
-    // Buffer 5 phút: Nếu còn dưới 5 phút thì coi như hết hạn để tạo mới
+    // Buffer 5 phút
     if (Date.now() > expiry - 300000) {
         console.log("⚠️ Cache expired or about to expire locally.");
         return null;
@@ -54,7 +49,6 @@ const clearLocalCache = () => {
 const createProductCache = async (products: Product[], forceRecreate: boolean = false): Promise<string | null> => {
     if (!isServerAvailable || !functions) return null;
     
-    // Nếu không force và đã có cache, trả về luôn
     if (!forceRecreate) {
         const existing = getActiveCache();
         if (existing) return existing;
@@ -69,12 +63,11 @@ const createProductCache = async (products: Product[], forceRecreate: boolean = 
         }
     });
 
-    // Nếu không có file nào thì không tạo cache
     if (pdfUrls.length === 0) return null;
 
     try {
         console.log(`🚀 Creating/Refreshing cache for ${pdfUrls.length} documents...`);
-        const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 600000 }); // 10 phút timeout
+        const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 }); // Client timeout 5 phút
         
         const result: any = await gateway({
             endpoint: 'createCache',
@@ -84,8 +77,7 @@ const createProductCache = async (products: Product[], forceRecreate: boolean = 
 
         if (result.data && result.data.cacheName) {
             const cacheName = result.data.cacheName as string;
-            // TTL 60 phút từ server. Lưu local expiry là 55 phút để an toàn.
-            const expiresAt = Date.now() + (55 * 60 * 1000); 
+            const expiresAt = Date.now() + (55 * 60 * 1000); // 55 mins
             
             localStorage.setItem(CACHE_KEY_NAME, cacheName);
             localStorage.setItem(CACHE_KEY_EXPIRY, expiresAt.toString());
@@ -104,18 +96,16 @@ const callAI = async (payload: any): Promise<string> => {
     // 1. Ưu tiên dùng Cloud Function (Server-side)
     if (isServerAvailable && functions) {
         try {
-            const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 60000 }); 
+            const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 }); // 5 phút client timeout 
             const result: any = await gateway(payload);
             return (result.data.text as string) || "";
         } catch (serverError: any) {
             console.warn("⚠️ Server Backend failed or returned error.", serverError);
             
-            // QUAN TRỌNG: Ném lỗi ra ngoài để hàm gọi (chatWithData) xử lý retry nếu là lỗi Cache
             if (payload.cachedContent || serverError.message?.includes('cache') || serverError.message?.includes('not found')) {
                 throw serverError;
             }
             
-            // Nếu lỗi khác (mạng, timeout), thử fallback xuống client nếu không dùng cache
             if (!payload.cachedContent) {
                 isServerAvailable = false;
             } else {
@@ -128,10 +118,9 @@ const callAI = async (payload: any): Promise<string> => {
     try {
         if (!clientAI) throw new Error("Missing API Key");
         
-        // Loại bỏ cachedContent khỏi payload vì client không dùng chung cache với server
         const { cachedContent, ...clientPayload } = payload;
         
-        const modelId = (clientPayload.model as string) || 'gemini-3-flash-preview'; // Client dùng model mới nhất cho nhanh
+        const modelId = (clientPayload.model as string) || 'gemini-3-flash-preview'; 
         const config = clientPayload.config || {};
         if (clientPayload.systemInstruction) config.systemInstruction = clientPayload.systemInstruction;
 
@@ -184,7 +173,7 @@ const sanitizeHistory = (history: any[]) => {
     }));
 };
 
-// --- CHAT WITH DATA & AUTO-HEALING CACHE ---
+// --- CHAT WITH DATA ---
 export const chatWithData = async (
   query: string, 
   appState: AppState, 
@@ -196,22 +185,25 @@ export const chatWithData = async (
     // 1. Lấy Cache (Nếu chưa có, tạo mới)
     let cacheName: string | null = await createProductCache(appState.products, false);
 
-    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Prudential chuyên nghiệp.
+    // Prompt cực mạnh để ép AI đọc file
+    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Bảo hiểm Prudential.
     
-    DỮ LIỆU KHÁCH HÀNG & HỢP ĐỒNG (JSON):
-    ${jsonData}
+    DỮ LIỆU BỐI CẢNH (Context Cache):
+    ${cacheName ? '✅ KHO TÀI LIỆU SẢN PHẨM (PDF) ĐÃ ĐƯỢC NẠP. BẠN PHẢI SỬ DỤNG THÔNG TIN TRONG ĐÓ ĐỂ TRẢ LỜI CÁC CÂU HỎI VỀ SỐ LIỆU, ĐIỀU KHOẢN, QUYỀN LỢI.' : '⚠️ CẢNH BÁO: Không tìm thấy tài liệu PDF đính kèm. Chỉ trả lời dựa trên kiến thức chung.'}
     
-    ${cacheName ? '✅ ĐÃ KẾT NỐI KHO TÀI LIỆU SẢN PHM (Context Cache). Hãy ưu tiên tra cứu thông tin chi tiết từ các tài liệu này.' : '⚠️ CHẾ ĐỘ CƠ BẢN: Hiện chưa có tài liệu sản phẩm đính kèm. Hãy tư vấn dựa trên kiến thức chung.'}
+    QUY TẮC TUYỆT ĐỐI:
+    1. Khi được hỏi về "Quyền lợi", "Chi trả", "Hạn mức", "Số tiền giường", "Phẫu thuật"... BẠN PHẢI TRA CỨU TRONG FILE PDF ĐÍNH KÈM (nếu có).
+    2. Nếu tìm thấy thông tin trong file PDF, hãy trích dẫn số liệu cụ thể (VD: "Theo quy tắc, tiền giường là 2.000.000đ/ngày").
+    3. Nếu không tìm thấy thông tin trong file PDF, hãy nói rõ: "Tôi không tìm thấy thông tin này trong tài liệu bạn đã tải lên."
+    4. Trả lời ngắn gọn, chuyên nghiệp.
 
-    QUY TẮC:
-    1. Trả lời ngắn gọn, đúng trọng tâm.
-    2. Ưu tiên dùng thông tin từ tài liệu đính kèm (nếu có).
+    Dữ liệu tóm tắt trên ứng dụng (tham khảo thêm):
+    ${jsonData}
     `;
 
     const cleanHistory = sanitizeHistory(history);
 
     try {
-        // 2. Thử gọi AI với Cache hiện tại
         return await callAI({
             endpoint: 'chat',
             cachedContent: cacheName, 
@@ -219,23 +211,19 @@ export const chatWithData = async (
             message: query,
             history: cleanHistory,
             systemInstruction: systemInstructionText, 
-            config: { temperature: 0.2 }
+            config: { temperature: 0.1 } // Giảm nhiệt độ để tăng độ chính xác
         });
 
     } catch (error: any) {
-        // 3. AUTO-HEALING: Nếu lỗi liên quan đến Cache (404 Not Found, Invalid Argument liên quan cache)
         const errString = error.message || error.toString();
+        // Auto-healing logic
         if (cacheName && (errString.includes('not found') || errString.includes('cache') || errString.includes('invalid argument'))) {
             console.warn("⚠️ Cache miss/expired on server. Triggering auto-healing...");
-            
-            // Xóa cache local cũ
             clearLocalCache();
             
-            // Tạo cache mới (Force recreate)
+            // Retry once
             const newCacheName = await createProductCache(appState.products, true);
-            
             if (newCacheName) {
-                // Thử lại lần 2 với cache mới
                 try {
                     return await callAI({
                         endpoint: 'chat',
@@ -244,16 +232,14 @@ export const chatWithData = async (
                         message: query,
                         history: cleanHistory,
                         systemInstruction: systemInstructionText, 
-                        config: { temperature: 0.2 }
+                        config: { temperature: 0.1 }
                     });
-                } catch (retryError: any) {
-                    console.error("❌ Retry failed:", retryError);
-                    return "Hệ thống đang đồng bộ lại dữ liệu. Vui lòng thử lại câu hỏi sau ít phút.";
+                } catch (retryError) {
+                    return "Hệ thống đang đồng bộ dữ liệu lớn. Vui lòng thử lại sau 1 phút.";
                 }
             }
         }
-        
-        return "Xin lỗi, tôi gặp sự cố khi truy xuất dữ liệu sản phẩm. Vui lòng thử lại.";
+        return "Xin lỗi, tôi chưa đọc được tài liệu lúc này. Vui lòng thử lại sau.";
     }
 };
 
@@ -271,7 +257,7 @@ export const consultantChat = async (
     try {
         return await callAI({
             endpoint: 'chat',
-            model: 'gemini-1.5-flash-001', // Use stable model for consistency
+            model: 'gemini-1.5-flash-001',
             message: query,
             history: cleanHistory,
             systemInstruction: `Roleplay: ${roleplayMode}. Goal: ${conversationGoal}. Profile: ${fullProfile}. Style: ${chatStyle}`,
