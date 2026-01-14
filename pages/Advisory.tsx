@@ -25,7 +25,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
     
     // Configuration State
     const [roleplayMode, setRoleplayMode] = useState<'consultant' | 'customer'>('customer'); // AI's Role (Default: AI is Customer, User is Consultant)
-    const [conversationGoal, setConversationGoal] = useState('Chốt hợp đồng bảo hiểm nhân thọ');
+    const [conversationGoal, setConversationGoal] = useState('Khơi gợi nhu cầu & Xây dựng niềm tin (MDRT Approach)');
     const [chatStyle, setChatStyle] = useState<'zalo' | 'formal'>('zalo');
     
     // Coach/Suggestions State
@@ -130,7 +130,7 @@ const AdvisoryPage: React.FC<AdvisoryPageProps> = ({ customers, contracts, agent
                         <p className="text-[10px] text-gray-400 mt-2 leading-tight">
                             {roleplayMode === 'customer' 
                                 ? 'AI đóng vai KH khó tính. Bạn luyện tập xử lý từ chối.' 
-                                : 'AI đóng vai Tư vấn viên mẫu (Mentor) để hướng dẫn bạn.'}
+                                : 'AI đóng vai Cố vấn MDRT mẫu (Mentor) để hướng dẫn bạn.'}
                         </p>
                     </div>
 

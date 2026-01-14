@@ -184,14 +184,14 @@ export const consultantChat = async (
     
     // --- BUILD CONTEXT STRINGS ---
     
-    // 1. Agent Profile Context (Fix for Generic Greeting)
+    // 1. Agent Profile Context
     let agentContext = "Tên bạn: Tư vấn viên Prudential.";
     if (agentProfile) {
         agentContext = `
         THÔNG TIN CỦA BẠN (TƯ VẤN VIÊN):
-        - Họ tên: ${agentProfile.fullName} (Hãy dùng tên này để xưng hô/giới thiệu)
-        - Danh hiệu: ${agentProfile.title}
-        - Đơn vị/Văn phòng: ${agentProfile.office || "Prudential Vietnam"}
+        - Họ tên: ${agentProfile.fullName} (Dùng tên này để xưng hô)
+        - Danh hiệu: ${agentProfile.title} (MDRT/Chuyên gia tài chính)
+        - Đơn vị: ${agentProfile.office || "Prudential Vietnam"}
         `;
     }
 
@@ -219,47 +219,52 @@ export const consultantChat = async (
     let planContext = "";
     if (planResult) {
         planContext = `
-        KẾT QUẢ HOẠCH ĐỊNH TÀI CHÍNH VỪA THỰC HIỆN:
+        DỮ LIỆU TÀI CHÍNH THỰC TẾ (Dùng để khơi gợi nhu cầu bằng con số):
         - Mục tiêu: ${planResult.goal}
-        - Cần có: ${planResult.requiredAmount.toLocaleString()}đ
-        - Đã có: ${planResult.currentAmount.toLocaleString()}đ
+        - Số tiền cần có: ${planResult.requiredAmount.toLocaleString()}đ
         - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()}đ
-        -> Hãy dùng con số thiếu hụt này để khơi gợi nhu cầu.
+        -> Hãy dùng con số Gap này để làm đòn bẩy tâm lý, nhưng thật khéo léo.
         `;
     }
 
     // --- SYSTEM PROMPT CONSTRUCTION ---
     const systemInstruction = `
-    BỐI CẢNH ROLEPLAY:
-    Bạn đang tham gia một buổi mô phỏng tư vấn bảo hiểm (Roleplay).
+    BỐI CẢNH: Bạn đang tham gia Roleplay (Mô phỏng tư vấn).
     
-    VAI TRÒ CỦA BẠN: ${roleplayMode === 'consultant' ? 'TƯ VẤN VIÊN (Người bán)' : 'KHÁCH HÀNG (Người mua)'}.
+    VAI TRÒ CỦA BẠN: ${roleplayMode === 'consultant' ? 'TƯ VẤN VIÊN CHUẨN MDRT (Million Dollar Round Table)' : 'KHÁCH HÀNG'}.
     
     ${roleplayMode === 'consultant' ? agentContext : ''}
     
     ${customerContext}
     
     THÔNG TIN BỔ SUNG:
-    - Hợp đồng hiện tại:
-    ${contractInfo}
-    - Gia đình:
-    ${familyInfo}
+    - Hợp đồng hiện tại: ${contractInfo}
+    - Gia đình: ${familyInfo}
     ${planContext}
     
-    MỤC TIÊU CUỘC HỘI THOẠI:
-    ${conversationGoal}
+    MỤC TIÊU CUỘC HỘI THOẠI: ${conversationGoal}
     
-    PHONG CÁCH GIAO TIẾP:
-    ${chatStyle === 'zalo' ? '- Thân mật, ngắn gọn, dùng icon/emoji (Phong cách chat Zalo/Messenger).' : '- Chuyên nghiệp, lịch sự, ân cần, câu từ chỉnh chu.'}
+    PHONG CÁCH GIAO TIẾP: ${chatStyle === 'zalo' ? 'Thân mật, ngắn gọn (Chat Zalo)' : 'Chuyên nghiệp, lịch sự (Gặp mặt/Email)'}.
     
-    HƯỚNG DẪN HÀNH ĐỘNG:
-    ${roleplayMode === 'consultant' 
-        ? `1. Hãy đóng vai Tư vấn viên ${agentProfile?.fullName || 'Prudential'}.
-           2. Khi bắt đầu hoặc chào hỏi, BẮT BUỘC dùng tên thật của bạn (${agentProfile?.fullName}) và đơn vị (${agentProfile?.office}). TUYỆT ĐỐI KHÔNG dùng placeholder như [Tên của bạn].
-           3. Dẫn dắt câu chuyện theo mục tiêu đề ra.` 
-        : `1. Hãy đóng vai Khách hàng ${customer.fullName}.
-           2. Phản ứng dựa trên tính cách: ${customer.analysis?.personality}.
-           3. Đưa ra lời từ chối hoặc thắc mắc phù hợp với hoàn cảnh.`}
+    ${roleplayMode === 'consultant' ? `
+    QUY TẮC CỐT LÕI CHO TƯ VẤN VIÊN MDRT (TUYỆT ĐỐI TUÂN THỦ):
+    1. **KHÔNG BÁN HÀNG (No Hard Selling)**: Bạn là Chuyên gia Hoạch định Tài chính (Financial Advisor), không phải người chào hàng. Nhiệm vụ của bạn là giúp khách hàng HIỂU vấn đề của họ, không phải ép họ mua sản phẩm.
+    2. **DẪN DẮT BẰNG CÂU HỎI (Power of Questions)**:
+       - Thay vì thuyết trình về sản phẩm, hãy đặt câu hỏi để khách hàng tự nói ra nỗi lo.
+       - VD: Thay vì nói "Gói này bảo vệ 1 tỷ", hãy hỏi "Nếu thu nhập của anh/chị tạm thời gián đoạn 5 năm tới, ai sẽ là người lo học phí cho các bé?"
+    3. **TẬP TRUNG VÀO "WHY" TRƯỚC "WHAT"**: 
+       - Làm rõ LÝ DO tại sao họ cần bảo vệ trước khi nói về SẢN PHẨM là gì.
+       - Chỉ đề xuất giải pháp khi khách hàng đã thừa nhận họ có nhu cầu.
+    4. **ĐỒNG CẢM SÂU SẮC (Empathy)**: 
+       - Khi khách hàng từ chối (ví dụ: "Không có tiền", "Để xem lại"), ĐỪNG tranh luận hay xử lý rập khuôn.
+       - Hãy đồng cảm: "Em hiểu, giai đoạn này kinh tế khó khăn chung..." sau đó mới nhẹ nhàng chuyển hướng.
+    5. **XÂY DỰNG NIỀM TIN**: Luôn đứng về phía lợi ích của khách hàng. Sẵn sàng khuyên khách hàng "chưa cần mua thêm" nếu họ đã đủ bảo vệ.
+    ` : `
+    HƯỚNG DẪN CHO VAI TRÒ KHÁCH HÀNG:
+    1. Hãy đóng vai Khách hàng ${customer.fullName}.
+    2. Phản ứng dựa trên tính cách: ${customer.analysis?.personality}.
+    3. Đưa ra lời từ chối hoặc thắc mắc phù hợp với hoàn cảnh thực tế (VD: Sợ lạm phát, sợ mất tiền, cần hỏi vợ/chồng...).
+    `}
     `;
 
     const cleanHistory = sanitizeHistory(history);
@@ -285,10 +290,12 @@ export const getObjectionSuggestions = async (msg: string, customer: Customer): 
         model: DEFAULT_MODEL,
         contents: `Khách hàng vừa nói: "${msg}".
         
-        Hãy đóng vai Coach (Huấn luyện viên), gợi ý 3 kịch bản xử lý từ chối cho tư vấn viên.
-        1. Cách 1: Dùng sự đồng cảm (Empathy).
-        2. Cách 2: Dùng Logic/Số liệu (Logic).
-        3. Cách 3: Kể câu chuyện tương tự (Story).
+        Hãy đóng vai Coach (Huấn luyện viên MDRT), gợi ý 3 kịch bản xử lý từ chối đỉnh cao.
+        Tiêu chí: Không đối đầu, dùng câu hỏi để hóa giải, tập trung vào cảm xúc.
+        
+        1. Cách 1: Đồng cảm & Thấu hiểu (Empathy First).
+        2. Cách 2: Đặt câu hỏi ngược lại (Questioning).
+        3. Cách 3: Kể chuyện/Ví dụ tương đồng (Storytelling).
         `,
         config: { 
             responseMimeType: "application/json",
@@ -297,7 +304,7 @@ export const getObjectionSuggestions = async (msg: string, customer: Customer): 
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                        label: { type: Type.STRING, description: "Tiêu đề ngắn (VD: Đồng cảm, Logic, Câu chuyện)" },
+                        label: { type: Type.STRING, description: "Tiêu đề ngắn (VD: Đồng cảm, Hỏi ngược, Kể chuyện)" },
                         type: { type: Type.STRING, description: "Loại: 'empathy', 'logic', hoặc 'story'" },
                         content: { type: Type.STRING, description: "Lời thoại mẫu để tư vấn viên nói" }
                     },
