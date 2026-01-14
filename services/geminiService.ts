@@ -19,7 +19,7 @@ const clientAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
 let isServerAvailable = isFirebaseReady;
 
 // MODEL CONFIG
-const DEFAULT_MODEL = 'gemini-1.5-flash-001'; 
+const DEFAULT_MODEL = 'gemini-3-flash-preview'; 
 
 // --- HELPER TO EXTRACT PDF TEXT ---
 // Called from Product Page when uploading PDF
@@ -58,7 +58,7 @@ const callAI = async (payload: any): Promise<string> => {
         
         const { cachedContent, ...clientPayload } = payload;
         
-        const modelId = (clientPayload.model as string) || 'gemini-3-flash-preview'; 
+        const modelId = (clientPayload.model as string) || DEFAULT_MODEL; 
         const config = clientPayload.config || {};
         if (clientPayload.systemInstruction) config.systemInstruction = clientPayload.systemInstruction;
 
@@ -81,6 +81,10 @@ const callAI = async (payload: any): Promise<string> => {
         }
     } catch (clientError: any) {
         console.error("❌ Client AI Error:", clientError);
+        // Fallback error message usually means model not found or key invalid
+        if (clientError.message.includes("404")) {
+             return "Lỗi cấu hình AI (404): Model không tồn tại hoặc API Key không hợp lệ.";
+        }
         return `Lỗi AI: ${clientError.message}`;
     }
 };
@@ -88,7 +92,7 @@ const callAI = async (payload: any): Promise<string> => {
 // --- HELPER FUNCTIONS ---
 export const generateFinancialAdvice = async (customerName: string, planResult: PlanResult): Promise<string> => {
     const prompt = `Bạn là Chuyên gia Tài chính Prudential. Nhận xét ngắn về KH ${customerName}. Mục tiêu: ${planResult.goal}. Gap: ${planResult.shortfall.toLocaleString()}đ. Lời khuyên 3 câu.`;
-    return await callAI({ endpoint: 'generateContent', model: 'gemini-3-flash-preview', contents: prompt });
+    return await callAI({ endpoint: 'generateContent', model: DEFAULT_MODEL, contents: prompt });
 };
 
 const prepareJsonContext = (state: AppState) => {
@@ -157,7 +161,7 @@ export const chatWithData = async (
     try {
         return await callAI({
             endpoint: 'chat',
-            model: DEFAULT_MODEL, // Gemini 1.5 Flash has 1M context, perfect for this.
+            model: DEFAULT_MODEL, 
             message: query,
             history: cleanHistory,
             systemInstruction: systemInstructionText, 
@@ -183,7 +187,7 @@ export const consultantChat = async (
     try {
         return await callAI({
             endpoint: 'chat',
-            model: 'gemini-1.5-flash-001',
+            model: DEFAULT_MODEL,
             message: query,
             history: cleanHistory,
             systemInstruction: `Roleplay: ${roleplayMode}. Goal: ${conversationGoal}. Profile: ${fullProfile}. Style: ${chatStyle}`,
@@ -197,7 +201,7 @@ export const consultantChat = async (
 export const getObjectionSuggestions = async (msg: string, customer: Customer): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash-001',
+        model: DEFAULT_MODEL,
         contents: `Khách: "${msg}". Gợi ý 3 cách xử lý từ chối. Output JSON.`,
         config: { responseMimeType: "application/json" }
     });
@@ -207,7 +211,7 @@ export const getObjectionSuggestions = async (msg: string, customer: Customer): 
 export const generateSocialPost = async (topic: string, tone: string): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash-001',
+        model: DEFAULT_MODEL,
         contents: `Topic: ${topic}. Tone: ${tone}. Viết 3 status FB. Output JSON array {title, content}.`,
         config: { responseMimeType: "application/json" }
     });
@@ -217,7 +221,7 @@ export const generateSocialPost = async (topic: string, tone: string): Promise<a
 export const generateContentSeries = async (topic: string): Promise<any[]> => {
     const text = await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash-001',
+        model: DEFAULT_MODEL,
         contents: `Topic: ${topic}. Plan 5 days content series. Output JSON array {day, type, content}.`,
         config: { responseMimeType: "application/json" }
     });
@@ -227,7 +231,7 @@ export const generateContentSeries = async (topic: string): Promise<any[]> => {
 export const generateStory = async (facts: string, emotion: string): Promise<string> => {
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash-001',
+        model: DEFAULT_MODEL,
         contents: `Facts: ${facts}. Emotion: ${emotion}. Write a touching story.`,
         config: { temperature: 0.9 }
     });
@@ -236,7 +240,7 @@ export const generateStory = async (facts: string, emotion: string): Promise<str
 export const generateClaimSupport = async (contract: Contract, customer: Customer): Promise<string> => {
     return await callAI({
         endpoint: 'generateContent',
-        model: 'gemini-1.5-flash-001',
+        model: DEFAULT_MODEL,
         contents: `Soạn tin hướng dẫn Claim HĐ ${contract.contractNumber} cho ${customer.fullName}`
     });
 };

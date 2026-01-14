@@ -47,7 +47,7 @@ exports.geminiGateway = onCall(async (request) => {
 
     const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls } = data;
     const ai = new GoogleGenAI({ apiKey: API_KEY });
-    const DEFAULT_MODEL = 'gemini-1.5-flash-001'; 
+    const DEFAULT_MODEL = 'gemini-3-flash-preview'; 
 
     // --- ENDPOINT: EXTRACT TEXT FROM PDF (Replacement for Cache) ---
     if (endpoint === 'extractText') {
