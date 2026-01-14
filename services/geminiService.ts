@@ -1,7 +1,7 @@
 
 import { httpsCallable, Functions } from "firebase/functions";
 import { functions, isFirebaseReady } from "./firebaseConfig";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Product } from "../types";
 
 // Initialize Client-side AI (Fallback)
@@ -279,11 +279,32 @@ export const consultantChat = async (
 };
 
 export const getObjectionSuggestions = async (msg: string, customer: Customer): Promise<any[]> => {
+    // Sử dụng responseSchema để đảm bảo định dạng JSON chính xác
     const text = await callAI({
         endpoint: 'generateContent',
         model: DEFAULT_MODEL,
-        contents: `Khách: "${msg}". Gợi ý 3 cách xử lý từ chối. Output JSON.`,
-        config: { responseMimeType: "application/json" }
+        contents: `Khách hàng vừa nói: "${msg}".
+        
+        Hãy đóng vai Coach (Huấn luyện viên), gợi ý 3 kịch bản xử lý từ chối cho tư vấn viên.
+        1. Cách 1: Dùng sự đồng cảm (Empathy).
+        2. Cách 2: Dùng Logic/Số liệu (Logic).
+        3. Cách 3: Kể câu chuyện tương tự (Story).
+        `,
+        config: { 
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        label: { type: Type.STRING, description: "Tiêu đề ngắn (VD: Đồng cảm, Logic, Câu chuyện)" },
+                        type: { type: Type.STRING, description: "Loại: 'empathy', 'logic', hoặc 'story'" },
+                        content: { type: Type.STRING, description: "Lời thoại mẫu để tư vấn viên nói" }
+                    },
+                    required: ["label", "type", "content"]
+                }
+            }
+        }
     });
     try { return JSON.parse(text); } catch { return []; }
 };
