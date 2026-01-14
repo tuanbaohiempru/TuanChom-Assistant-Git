@@ -20,8 +20,7 @@ const downloadFile = async (url, outputPath) => {
     await pipeline(response.body, fileStream);
 };
 
-// CHUYỂN VỀ GEN 1 (functions.https.onCall) để tránh lỗi Eventarc/IAM
-// Cấu hình timeout 540s (9 phút) và memory 1GB để xử lý tác vụ AI
+// GEN 1 Cloud Function
 exports.geminiGateway = functions
     .runWith({
         timeoutSeconds: 540,
@@ -36,14 +35,15 @@ exports.geminiGateway = functions
         throw new functions.https.HttpsError('failed-precondition', 'Server chưa cấu hình API Key.');
     }
 
-    // 2. Validate request body
-    // Trong Gen 1, 'data' được truyền trực tiếp, không cần request.data
     if (!data) {
         throw new functions.https.HttpsError('invalid-argument', 'Request body is missing.');
     }
 
     const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls, cachedContent } = data;
     const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+    // Use consistent model for caching. 'gemini-1.5-flash-001' is Stable for Context Caching.
+    const DEFAULT_MODEL = 'gemini-1.5-flash-001'; 
 
     // --- ENDPOINT: CREATE CACHE (Context Caching) ---
     if (endpoint === 'createCache') {
@@ -82,7 +82,6 @@ exports.geminiGateway = functions
                     
                 } catch (err) {
                     console.error(`[Cache] Error processing file ${index}:`, err);
-                    // Continue with other files even if one fails
                 }
             }
 
@@ -90,18 +89,18 @@ exports.geminiGateway = functions
                 throw new Error("Failed to upload any files to Gemini.");
             }
 
-            // 2. Wait for files to be processed (Active)
+            // 2. Wait for files to be processed
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // 3. Create Cache
-            // Use gemini-3-flash-preview as it is the standard for fast tasks and context
+            // TTL 60 minutes
             const cacheConfig = {
-                model: 'models/gemini-3-flash-preview', 
+                model: model || DEFAULT_MODEL, 
                 contents: uploadedFiles.map(f => ({
                     role: 'user',
                     parts: [{ fileData: { fileUri: f.fileUri, mimeType: f.mimeType } }]
                 })),
-                ttlSeconds: 3300 // 55 mins
+                ttlSeconds: 3600 
             };
 
             const cacheResponse = await ai.caching.cachedContents.create(cacheConfig);
@@ -135,8 +134,7 @@ exports.geminiGateway = functions
 
     // --- ENDPOINT: CHAT / GENERATE CONTENT ---
     try {
-        // Use gemini-3-flash-preview by default or if cachedContent is present (compatible model)
-        const targetModel = model || 'gemini-3-flash-preview';
+        const targetModel = model || DEFAULT_MODEL;
         
         const cleanConfig = { ...(config || {}) };
         
@@ -163,7 +161,7 @@ exports.geminiGateway = functions
         };
 
         if (cachedContent) {
-            // When using cache, pass it to the request
+            // Important: cachedContent must be valid and exist on Google's side.
             initParams.cachedContent = cachedContent;
         }
 
@@ -195,10 +193,14 @@ exports.geminiGateway = functions
 
     } catch (error) {
         console.error("[Gemini API Error Log]", error.message);
+        
+        // Return specific error message to client for Auto-healing handling
         const clientMessage = error.message || 'Lỗi không xác định từ AI Server';
+        
+        // Maps SDK errors to HTTP errors
         let code = 'internal';
         if (clientMessage.includes('API key')) code = 'permission-denied';
-        else if (error.status === 404) code = 'not-found';
+        else if (error.status === 404 || clientMessage.includes('not found')) code = 'not-found'; // Crucial for cache miss
         else if (error.status === 429) code = 'resource-exhausted';
         
         throw new functions.https.HttpsError(code, clientMessage);
