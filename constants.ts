@@ -1,5 +1,5 @@
 
-import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, ProductCalculationType } from './types';
+import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, ProductCalculationType, IncomeTrend, RiskTolerance, FinancialPriority, MaritalStatus, FinancialRole } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -121,7 +121,11 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     phone: '0909123456',
     idCard: '079185000123',
     job: 'Kế toán trưởng',
+    occupation: 'Kế toán trưởng',
     companyAddress: 'Vincom Center, Q1, TP.HCM',
+    maritalStatus: MaritalStatus.MARRIED,
+    financialRole: FinancialRole.SHARED_BREADWINNER,
+    dependents: 2,
     health: {
       medicalHistory: 'Đã mổ ruột thừa năm 2010',
       height: 160,
@@ -136,7 +140,27 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       previousExperience: 'Tích cực',
       keyConcerns: 'Sức khỏe, Tích lũy cho con',
       personality: PersonalityType.ANALYTICAL,
-      readiness: ReadinessLevel.HOT
+      readiness: ReadinessLevel.HOT,
+      // Defaults for new fields
+      incomeMonthly: 35000000,
+      incomeTrend: IncomeTrend.STABLE,
+      projectedIncome3Years: 40000000,
+      monthlyExpenses: 20000000,
+      existingInsurance: {
+        hasLife: false, lifeSumAssured: 0, lifeFee: 0, lifeTermRemaining: 0,
+        hasAccident: false, accidentSumAssured: 0,
+        hasCI: false, ciSumAssured: 0,
+        hasHealthCare: false, healthCareFee: 0,
+        dissatisfaction: ''
+      },
+      currentPriority: FinancialPriority.PROTECTION,
+      futurePlans: 'Tích lũy cho con du học',
+      biggestWorry: 'Rủi ro bệnh hiểm nghèo',
+      pastExperience: 'Đã tham gia BHXH',
+      influencer: 'Chồng',
+      buyCondition: 'Phí hợp lý, quyền lợi rõ ràng',
+      preference: 'Balanced',
+      riskTolerance: RiskTolerance.MEDIUM
     },
     interactionHistory: ['2023-01-10: Tư vấn lần đầu', '2023-01-15: Ký hợp đồng'],
     status: CustomerStatus.SIGNED
@@ -149,7 +173,11 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     phone: '0912345678',
     idCard: '079190000456',
     job: 'Kỹ sư phần mềm',
+    occupation: 'Kỹ sư phần mềm',
     companyAddress: 'Etown, Tân Bình',
+    maritalStatus: MaritalStatus.SINGLE,
+    financialRole: FinancialRole.INDEPENDENT,
+    dependents: 0,
     health: {
       medicalHistory: 'Khỏe mạnh',
       height: 175,
@@ -164,7 +192,27 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       previousExperience: 'Chưa từng tham gia',
       keyConcerns: 'Bệnh hiểm nghèo, Tai nạn',
       personality: PersonalityType.ANALYTICAL,
-      readiness: ReadinessLevel.WARM
+      readiness: ReadinessLevel.WARM,
+      // Defaults for new fields
+      incomeMonthly: 25000000,
+      incomeTrend: IncomeTrend.INCREASING,
+      projectedIncome3Years: 35000000,
+      monthlyExpenses: 15000000,
+      existingInsurance: {
+        hasLife: false, lifeSumAssured: 0, lifeFee: 0, lifeTermRemaining: 0,
+        hasAccident: false, accidentSumAssured: 0,
+        hasCI: false, ciSumAssured: 0,
+        hasHealthCare: false, healthCareFee: 0,
+        dissatisfaction: ''
+      },
+      currentPriority: FinancialPriority.ACCUMULATION,
+      futurePlans: 'Mua nhà, Lập gia đình',
+      biggestWorry: 'Tai nạn xe máy',
+      pastExperience: 'Chưa có',
+      influencer: 'Bản thân',
+      buyCondition: 'Sản phẩm đầu tư sinh lời',
+      preference: 'Cashflow',
+      riskTolerance: RiskTolerance.HIGH
     },
     interactionHistory: ['2023-05-20: Gặp cafe giới thiệu sản phẩm'],
     status: CustomerStatus.ADVISING

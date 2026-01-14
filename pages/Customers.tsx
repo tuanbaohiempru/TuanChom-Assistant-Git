@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Customer, Contract, CustomerStatus, Gender, FinancialStatus, PersonalityType, ReadinessLevel, RelationshipType, CustomerRelationship, Illustration } from '../types';
+import { Customer, Contract, CustomerStatus, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, FinancialPriority, RelationshipType, CustomerRelationship, Illustration, FinancialStatus, PersonalityType, ReadinessLevel } from '../types';
 import { ConfirmModal, formatDateVN, SearchableCustomerSelect, CurrencyInput } from '../components/Shared';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
@@ -47,16 +47,45 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         dob: '',
         phone: '',
         idCard: '',
-        job: '',
+        job: '', // Maps to occupation
+        occupation: '', // New field
         companyAddress: '',
+        maritalStatus: MaritalStatus.MARRIED,
+        financialRole: FinancialRole.MAIN_BREADWINNER,
+        dependents: 0,
         status: CustomerStatus.POTENTIAL,
         interactionHistory: [],
         relationships: [],
         documents: [], 
         health: { medicalHistory: '', height: 165, weight: 60, habits: '' },
         analysis: {
+            // New Structures
+            incomeMonthly: 0,
+            incomeTrend: IncomeTrend.STABLE,
+            projectedIncome3Years: 0,
+            monthlyExpenses: 0,
+            
+            existingInsurance: {
+                hasLife: false, lifeSumAssured: 0, lifeFee: 0, lifeTermRemaining: 0,
+                hasAccident: false, accidentSumAssured: 0,
+                hasCI: false, ciSumAssured: 0,
+                hasHealthCare: false, healthCareFee: 0,
+                dissatisfaction: ''
+            },
+
+            currentPriority: FinancialPriority.PROTECTION,
+            futurePlans: '',
+            
+            biggestWorry: '',
+            pastExperience: '',
+            influencer: '',
+            buyCondition: '',
+            preference: 'Balanced',
+            riskTolerance: RiskTolerance.MEDIUM,
+
+            // Legacy support
             childrenCount: 0,
-            incomeEstimate: '', // Will store as string but represent a number
+            incomeEstimate: '', 
             financialStatus: FinancialStatus.STABLE,
             insuranceKnowledge: '',
             previousExperience: '',
@@ -89,11 +118,17 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
 
     const handleOpenEdit = (c: Customer) => {
         const safeData = {
+            ...defaultCustomer, // Ensure structure exists
             ...c,
+            // Deep merge objects to prevent undefined errors on new fields
+            health: { ...defaultCustomer.health, ...(c.health || {}) },
+            analysis: { 
+                ...defaultCustomer.analysis, 
+                ...(c.analysis || {}),
+                existingInsurance: { ...defaultCustomer.analysis.existingInsurance, ...(c.analysis?.existingInsurance || {}) }
+            },
             relationships: c.relationships || [],
             documents: c.documents || [],
-            health: c.health || defaultCustomer.health,
-            analysis: c.analysis || defaultCustomer.analysis,
             interactionHistory: c.interactionHistory || []
         };
         setFormData(safeData);
@@ -117,7 +152,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
     };
 
     const handleSave = async () => {
-        if (!formData.fullName || !formData.phone) return alert("Vui lòng nhập Họ tên và SĐT");
+        if (!formData.fullName) return alert("Vui lòng nhập Họ tên khách hàng");
+        // Phone is now optional per request
         
         if (isEditing) {
             // 1. Lưu thông tin khách hàng hiện tại
@@ -162,7 +198,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                 await Promise.all(updatePromises);
             }
         } else {
-            // Trường hợp thêm mới: Chưa có ID nên chưa thể tạo liên kết ngược ngay lập tức
+            // Trường hợp thêm mới
             await onAdd(formData);
         }
         
@@ -258,18 +294,18 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         <div className="p-5 flex items-start justify-between border-b border-gray-50 dark:border-gray-800">
                             <div className="flex items-center gap-3">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-2 ${c.gender === Gender.FEMALE ? 'bg-pink-50 text-pink-500' : 'bg-blue-50 text-blue-500'}`}>{c.fullName.charAt(0)}</div>
-                                <div><h3 className="font-bold text-gray-800 dark:text-gray-100 line-clamp-1">{c.fullName}</h3><p className="text-xs text-gray-500">{c.job}</p></div>
+                                <div><h3 className="font-bold text-gray-800 dark:text-gray-100 line-clamp-1">{c.fullName}</h3><p className="text-xs text-gray-500">{c.job || c.occupation}</p></div>
                             </div>
                             <span className={`w-2 h-2 rounded-full ${c.status === CustomerStatus.SIGNED ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
                         </div>
                         <div className="p-5 space-y-3 flex-1">
-                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300"><i className="fas fa-phone-alt w-5 text-gray-400 text-xs"></i><span>{c.phone}</span></div>
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-300"><i className="fas fa-phone-alt w-5 text-gray-400 text-xs"></i><span>{c.phone || 'Chưa có SĐT'}</span></div>
                             {/* Income Display */}
                             <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
                                 <i className="fas fa-money-bill-wave w-5 text-gray-400 text-xs"></i>
                                 <span>
-                                    {Number(c.analysis?.incomeEstimate) > 0 
-                                        ? `${Number(c.analysis.incomeEstimate).toLocaleString()} đ/tháng` 
+                                    {c.analysis.incomeMonthly > 0
+                                        ? `${c.analysis.incomeMonthly.toLocaleString()} đ/tháng` 
                                         : 'Chưa cập nhật thu nhập'}
                                 </span>
                             </div>
@@ -297,26 +333,152 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         
                         <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto bg-white dark:bg-pru-card">
                             <button onClick={() => setActiveTab('info')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Thông tin chung</button>
+                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Phân tích (FNA)</button>
                             <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'history' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Lịch sử & Ghi chú</button>
                             <button onClick={() => setActiveTab('health')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'health' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Sức khỏe</button>
                             <button onClick={() => setActiveTab('contracts')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'contracts' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Hợp đồng <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full ml-1">{customerContracts.length}</span></button>
                             <button onClick={() => setActiveTab('illustrations')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'illustrations' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Bảng minh họa <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full ml-1">{customerIllustrations.length}</span></button>
                             <button onClick={() => setActiveTab('family')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'family' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Gia đình</button>
-                            <button onClick={() => setActiveTab('analysis')} className={`flex-1 min-w-fit px-4 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'analysis' ? 'border-pru-red text-pru-red' : 'border-transparent text-gray-500'}`}>Phân tích</button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-pru-card space-y-6">
-                            {/* TAB: INFO */}
+                            {/* TAB: INFO (Updated) */}
                             {activeTab === 'info' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="label-text">Họ và tên *</label><input className="input-field" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} /></div>
-                                    <div><label className="label-text">Số điện thoại *</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-                                    <div><label className="label-text">Giới tính</label><select className="input-field" value={formData.gender} onChange={(e: any) => setFormData({...formData, gender: e.target.value})}>{Object.values(Gender).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
-                                    <div><label className="label-text">Ngày sinh</label><input type="date" className="input-field" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} /></div>
-                                    <div><label className="label-text">CCCD / CMND</label><input className="input-field" value={formData.idCard} onChange={e => setFormData({...formData, idCard: e.target.value})} /></div>
-                                    <div><label className="label-text">Nghề nghiệp</label><input className="input-field" value={formData.job} onChange={e => setFormData({...formData, job: e.target.value})} /></div>
+                                    <div className="md:col-span-2 bg-blue-50 dark:bg-blue-900/10 p-3 rounded border border-blue-100 dark:border-blue-900/30 mb-2">
+                                        <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase mb-2">Thông tin định danh</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><label className="label-text">Họ và tên *</label><input className="input-field" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} /></div>
+                                            <div><label className="label-text">Số điện thoại (Optional)</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="Không bắt buộc" /></div>
+                                            <div><label className="label-text">Ngày sinh</label><input type="date" className="input-field" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} /></div>
+                                            <div><label className="label-text">Giới tính</label><select className="input-field" value={formData.gender} onChange={(e: any) => setFormData({...formData, gender: e.target.value})}>{Object.values(Gender).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                        </div>
+                                    </div>
+
+                                    <div><label className="label-text">Tình trạng hôn nhân</label><select className="input-field" value={formData.maritalStatus} onChange={(e: any) => setFormData({...formData, maritalStatus: e.target.value})}>{Object.values(MaritalStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">Nghề nghiệp</label><input className="input-field" value={formData.occupation} onChange={e => setFormData({...formData, occupation: e.target.value})} /></div>
+                                    
+                                    <div><label className="label-text">Số người phụ thuộc</label><input type="number" className="input-field" value={formData.dependents} onChange={e => setFormData({...formData, dependents: Number(e.target.value)})} /></div>
+                                    <div><label className="label-text">Vai trò tài chính</label><select className="input-field" value={formData.financialRole} onChange={(e: any) => setFormData({...formData, financialRole: e.target.value})}>{Object.values(FinancialRole).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+
                                     <div className="md:col-span-2"><label className="label-text">Địa chỉ / Công ty</label><input className="input-field" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} /></div>
-                                    <div><label className="label-text">Trạng thái</label><select className="input-field" value={formData.status} onChange={(e: any) => setFormData({...formData, status: e.target.value})}>{Object.values(CustomerStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">CCCD / CMND</label><input className="input-field" value={formData.idCard} onChange={e => setFormData({...formData, idCard: e.target.value})} /></div>
+                                    <div><label className="label-text">Trạng thái tư vấn</label><select className="input-field" value={formData.status} onChange={(e: any) => setFormData({...formData, status: e.target.value})}>{Object.values(CustomerStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                </div>
+                            )}
+
+                            {/* TAB: ANALYSIS (Complete Overhaul) */}
+                            {activeTab === 'analysis' && (
+                                <div className="space-y-6">
+                                    {/* 1. FINANCIAL CASHFLOW */}
+                                    <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-100 dark:border-green-900/30">
+                                        <h4 className="text-sm font-bold text-green-800 dark:text-green-300 mb-3 flex items-center"><i className="fas fa-wallet mr-2"></i> 1. Thông tin Thu nhập & Dòng tiền</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="label-text">Thu nhập bình quân tháng (VNĐ)</label>
+                                                <CurrencyInput className="input-field font-bold text-green-700" value={formData.analysis.incomeMonthly} onChange={v => setFormData({...formData, analysis: {...formData.analysis, incomeMonthly: v}})} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Xu hướng thu nhập</label>
+                                                <select className="input-field" value={formData.analysis.incomeTrend} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, incomeTrend: e.target.value}})}>{Object.values(IncomeTrend).map(v => <option key={v} value={v}>{v}</option>)}</select>
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Thu nhập dự kiến (3-5 năm tới)</label>
+                                                <CurrencyInput className="input-field" value={formData.analysis.projectedIncome3Years} onChange={v => setFormData({...formData, analysis: {...formData.analysis, projectedIncome3Years: v}})} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Chi tiêu bình quân tháng (VNĐ)</label>
+                                                <CurrencyInput className="input-field text-red-600" value={formData.analysis.monthlyExpenses} onChange={v => setFormData({...formData, analysis: {...formData.analysis, monthlyExpenses: v}})} placeholder="0" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. EXISTING INSURANCE */}
+                                    <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                        <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-3 flex items-center"><i className="fas fa-shield-alt mr-2"></i> 2. Bảo hiểm hiện có (Tại các công ty khác)</h4>
+                                        
+                                        <div className="space-y-3">
+                                            {/* Life */}
+                                            <div className="flex items-center gap-3">
+                                                <input type="checkbox" checked={formData.analysis.existingInsurance?.hasLife} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, hasLife: e.target.checked}}})} className="w-4 h-4 accent-blue-600" />
+                                                <label className="text-sm font-bold min-w-[100px]">Nhân thọ</label>
+                                                {formData.analysis.existingInsurance?.hasLife && (
+                                                    <>
+                                                        <CurrencyInput className="input-field py-1.5 text-xs flex-1" placeholder="Mệnh giá (STBH)" value={formData.analysis.existingInsurance.lifeSumAssured} onChange={v => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, lifeSumAssured: v}}})} />
+                                                        <CurrencyInput className="input-field py-1.5 text-xs flex-1" placeholder="Phí đóng/năm" value={formData.analysis.existingInsurance.lifeFee} onChange={v => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, lifeFee: v}}})} />
+                                                        <input type="number" className="input-field py-1.5 text-xs w-24" placeholder="Năm còn lại" value={formData.analysis.existingInsurance.lifeTermRemaining} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, lifeTermRemaining: Number(e.target.value)}}})} />
+                                                    </>
+                                                )}
+                                            </div>
+                                            {/* Accident */}
+                                            <div className="flex items-center gap-3">
+                                                <input type="checkbox" checked={formData.analysis.existingInsurance?.hasAccident} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, hasAccident: e.target.checked}}})} className="w-4 h-4 accent-blue-600" />
+                                                <label className="text-sm font-bold min-w-[100px]">Tai nạn</label>
+                                                {formData.analysis.existingInsurance?.hasAccident && (
+                                                    <CurrencyInput className="input-field py-1.5 text-xs flex-1" placeholder="Mệnh giá bảo vệ" value={formData.analysis.existingInsurance.accidentSumAssured} onChange={v => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, accidentSumAssured: v}}})} />
+                                                )}
+                                            </div>
+                                            {/* CI */}
+                                            <div className="flex items-center gap-3">
+                                                <input type="checkbox" checked={formData.analysis.existingInsurance?.hasCI} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, hasCI: e.target.checked}}})} className="w-4 h-4 accent-blue-600" />
+                                                <label className="text-sm font-bold min-w-[100px]">Bệnh hiểm nghèo</label>
+                                                {formData.analysis.existingInsurance?.hasCI && (
+                                                    <CurrencyInput className="input-field py-1.5 text-xs flex-1" placeholder="Mệnh giá bảo vệ" value={formData.analysis.existingInsurance.ciSumAssured} onChange={v => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, ciSumAssured: v}}})} />
+                                                )}
+                                            </div>
+                                            {/* Health Care */}
+                                            <div className="flex items-center gap-3">
+                                                <input type="checkbox" checked={formData.analysis.existingInsurance?.hasHealthCare} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, hasHealthCare: e.target.checked}}})} className="w-4 h-4 accent-blue-600" />
+                                                <label className="text-sm font-bold min-w-[100px]">Thẻ sức khỏe</label>
+                                                {formData.analysis.existingInsurance?.hasHealthCare && (
+                                                    <CurrencyInput className="input-field py-1.5 text-xs flex-1" placeholder="Phí đang đóng" value={formData.analysis.existingInsurance.healthCareFee} onChange={v => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, healthCareFee: v}}})} />
+                                                )}
+                                            </div>
+                                            
+                                            <div className="mt-2">
+                                                <label className="label-text">Điểm chưa hài lòng ở HĐ cũ</label>
+                                                <input className="input-field" placeholder="VD: Phí cao, quyền lợi thấp, đại lý bỏ rơi..." value={formData.analysis.existingInsurance?.dissatisfaction} onChange={e => setFormData({...formData, analysis: {...formData.analysis, existingInsurance: {...formData.analysis.existingInsurance, dissatisfaction: e.target.value}}})} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 3. GOALS */}
+                                    <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                                        <h4 className="text-sm font-bold text-purple-800 dark:text-purple-300 mb-3 flex items-center"><i className="fas fa-bullseye mr-2"></i> 3. Mục tiêu tài chính</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="label-text">Ưu tiên hiện tại</label>
+                                                <select className="input-field" value={formData.analysis.currentPriority} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, currentPriority: e.target.value}})}>{Object.values(FinancialPriority).map(v => <option key={v} value={v}>{v}</option>)}</select>
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Kế hoạch tương lai</label>
+                                                <input className="input-field" placeholder="VD: Quỹ học vấn cho con, Hưu trí..." value={formData.analysis.futurePlans} onChange={e => setFormData({...formData, analysis: {...formData.analysis, futurePlans: e.target.value}})} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 4. PSYCHOLOGY */}
+                                    <div className="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-900/30">
+                                        <h4 className="text-sm font-bold text-orange-800 dark:text-orange-300 mb-3 flex items-center"><i className="fas fa-brain mr-2"></i> 4. Mối quan tâm & Rào cản tâm lý</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div><label className="label-text">Lo lắng lớn nhất khi mua BH</label><input className="input-field" value={formData.analysis.biggestWorry} onChange={e => setFormData({...formData, analysis: {...formData.analysis, biggestWorry: e.target.value}})} placeholder="VD: Sợ mất giá, sợ khó lấy tiền..." /></div>
+                                            <div><label className="label-text">Trải nghiệm trước đây</label><input className="input-field" value={formData.analysis.pastExperience} onChange={e => setFormData({...formData, analysis: {...formData.analysis, pastExperience: e.target.value}})} placeholder="VD: Đã từng bị từ chối bồi thường..." /></div>
+                                            <div><label className="label-text">Ai ảnh hưởng quyết định?</label><input className="input-field" value={formData.analysis.influencer} onChange={e => setFormData({...formData, analysis: {...formData.analysis, influencer: e.target.value}})} placeholder="VD: Vợ/Chồng, Bố mẹ, Bạn bè..." /></div>
+                                            <div><label className="label-text">Điều kiện để tham gia?</label><input className="input-field" value={formData.analysis.buyCondition} onChange={e => setFormData({...formData, analysis: {...formData.analysis, buyCondition: e.target.value}})} placeholder="VD: Phí dưới 20tr, công ty uy tín..." /></div>
+                                            <div>
+                                                <label className="label-text">Thiên hướng (Dòng tiền vs Bảo vệ)</label>
+                                                <select className="input-field" value={formData.analysis.preference} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, preference: e.target.value}})}>
+                                                    <option value="Protection">Ưu tiên giá trị Bảo vệ (Protection)</option>
+                                                    <option value="Cashflow">Ưu tiên Dòng tiền/Lãi (Cashflow)</option>
+                                                    <option value="Balanced">Cân bằng cả hai</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Mức độ chấp nhận rủi ro</label>
+                                                <select className="input-field" value={formData.analysis.riskTolerance} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, riskTolerance: e.target.value}})}>{Object.values(RiskTolerance).map(v => <option key={v} value={v}>{v}</option>)}</select>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -527,31 +689,6 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                                             Chưa có bảng minh họa nào.
                                         </div>
                                     )}
-                                </div>
-                            )}
-                            
-                            {/* TAB: ANALYSIS */}
-                            {activeTab === 'analysis' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="label-text">Thu nhập bình quân (VNĐ/Tháng)</label>
-                                        <CurrencyInput
-                                            className="input-field font-bold text-green-600"
-                                            value={Number(formData.analysis.incomeEstimate) || 0}
-                                            onChange={(v) => setFormData({
-                                                ...formData,
-                                                analysis: {
-                                                    ...formData.analysis,
-                                                    incomeEstimate: v.toString()
-                                                }
-                                            })}
-                                            placeholder="Nhập số tiền..."
-                                        />
-                                    </div>
-                                    <div><label className="label-text">Số con</label><input type="number" className="input-field" value={formData.analysis.childrenCount} onChange={e => setFormData({...formData, analysis: {...formData.analysis, childrenCount: Number(e.target.value)}})} /></div>
-                                    <div><label className="label-text">Tài chính</label><select className="input-field" value={formData.analysis.financialStatus} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, financialStatus: e.target.value}})}>{Object.values(FinancialStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
-                                    <div><label className="label-text">Sẵn sàng</label><select className="input-field" value={formData.analysis.readiness} onChange={(e: any) => setFormData({...formData, analysis: {...formData.analysis, readiness: e.target.value}})}>{Object.values(ReadinessLevel).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
-                                    <div className="md:col-span-2"><label className="label-text">Mối quan tâm</label><input className="input-field" value={formData.analysis.keyConcerns} onChange={e => setFormData({...formData, analysis: {...formData.analysis, keyConcerns: e.target.value}})} /></div>
                                 </div>
                             )}
                         </div>

@@ -11,6 +11,41 @@ export enum Gender {
   OTHER = 'Khác'
 }
 
+// --- NEW ENUMS FOR CUSTOMER PROFILE ---
+export enum MaritalStatus {
+  SINGLE = 'Độc thân',
+  MARRIED = 'Đã kết hôn',
+  DIVORCED = 'Ly hôn',
+  WIDOWED = 'Góa',
+  UNKNOWN = 'Chưa xác định'
+}
+
+export enum FinancialRole {
+  MAIN_BREADWINNER = 'Trụ cột chính',
+  SHARED_BREADWINNER = 'Đồng trụ cột',
+  DEPENDENT = 'Người phụ thuộc',
+  INDEPENDENT = 'Độc lập tài chính'
+}
+
+export enum IncomeTrend {
+  INCREASING = 'Tăng trưởng',
+  STABLE = 'Ổn định',
+  FLUCTUATING = 'Biến động/Bấp bênh',
+  DECREASING = 'Đang giảm'
+}
+
+export enum RiskTolerance {
+  LOW = 'An toàn / Sợ rủi ro',
+  MEDIUM = 'Cân bằng',
+  HIGH = 'Mạo hiểm / Lợi nhuận cao'
+}
+
+export enum FinancialPriority {
+  PROTECTION = 'Bảo vệ (An tâm)',
+  ACCUMULATION = 'Tích lũy (Tiết kiệm)',
+  INVESTMENT = 'Đầu tư (Sinh lời)'
+}
+
 export interface HealthInfo {
   medicalHistory: string;
   height: number; // cm
@@ -18,7 +53,7 @@ export interface HealthInfo {
   habits: string;
 }
 
-// New Enums for Analysis
+// New Enums for Analysis (Legacy support kept where needed)
 export enum FinancialStatus {
   STABLE = 'Ổn định, có dư giả',
   JUST_ENOUGH = 'Đủ sống, ít dư',
@@ -39,13 +74,56 @@ export enum ReadinessLevel {
   HOT = 'Sẵn sàng tham gia'
 }
 
+// --- NEW STRUCT FOR ANALYSIS ---
+export interface ExistingInsurance {
+  hasLife: boolean;
+  lifeSumAssured: number;
+  lifeFee: number;
+  lifeTermRemaining: number;
+  
+  hasAccident: boolean;
+  accidentSumAssured: number;
+  
+  hasCI: boolean; // Critical Illness
+  ciSumAssured: number;
+  
+  hasHealthCare: boolean;
+  healthCareFee: number;
+
+  dissatisfaction: string; // Điểm chưa hài lòng
+}
+
 export interface CustomerAnalysis {
-  childrenCount: number;
-  incomeEstimate: string; // e.g. "20-30 triệu/tháng"
-  financialStatus: FinancialStatus;
-  insuranceKnowledge: string; // e.g. "Chưa biết gì", "Đã từng mua nhưng hủy"
-  previousExperience: string; // Bad or Good experience
-  keyConcerns: string; // e.g. "Con cái", "Hưu trí", "Bệnh hiểm nghèo"
+  // Legacy fields support
+  childrenCount: number; // Số người phụ thuộc (Generalized)
+  incomeEstimate?: string; // Legacy field support
+  
+  // 1. Income & Cashflow
+  incomeMonthly: number; // Thu nhập bình quân tháng
+  incomeTrend: IncomeTrend;
+  projectedIncome3Years: number; // Thu nhập dự kiến 3-5 năm tới
+  monthlyExpenses: number; // Dòng tiền chi tiêu
+  
+  // 2. Existing Insurance
+  existingInsurance: ExistingInsurance;
+
+  // 3. Goals
+  currentPriority: FinancialPriority;
+  futurePlans: string; // Cho con, Hưu trí, Chuyển giao...
+
+  // 4. Psychology & Barriers
+  biggestWorry: string; // Lo lắng lớn nhất
+  pastExperience: string; // Trải nghiệm cũ
+  influencer: string; // Ai ảnh hưởng quyết định
+  buyCondition: string; // Điều kiện để đồng ý
+  preference: 'Cashflow' | 'Protection' | 'Balanced'; // Quan tâm dòng tiền hay bảo vệ
+  riskTolerance: RiskTolerance;
+  
+  // Legacy
+  financialStatus?: FinancialStatus;
+  insuranceKnowledge?: string; 
+  previousExperience?: string; 
+  keyConcerns?: string; 
   personality: PersonalityType;
   readiness: ReadinessLevel;
 }
@@ -58,7 +136,6 @@ export interface CustomerDocument {
   uploadDate: string;
 }
 
-// --- NEW RELATIONSHIP TYPES ---
 export enum RelationshipType {
   SPOUSE = 'Vợ / Chồng',
   PARENT = 'Bố / Mẹ',
@@ -72,12 +149,11 @@ export interface CustomerRelationship {
   relationship: RelationshipType;
 }
 
-// --- NEW: FINANCIAL PLANNING RECORD ---
 export interface FinancialPlanRecord {
   id: string;
   createdAt: string; // ISO Date
   goal: FinancialGoal;
-  inputs: any; // Stores the surveyData state
+  inputs: any; 
   result: PlanResult;
 }
 
@@ -86,15 +162,20 @@ export interface Customer {
   fullName: string;
   gender: Gender;
   dob: string; // ISO date string
+  maritalStatus: MaritalStatus; // New
+  occupation: string; // New
   phone: string;
   idCard: string;
-  job: string;
+  job: string; // Legacy field, mapped to Occupation in UI
   companyAddress: string;
+  financialRole: FinancialRole; // New
+  dependents: number; // New
+  
   health: HealthInfo;
   analysis: CustomerAnalysis; 
-  documents?: CustomerDocument[]; // Digital Cabinet
-  relationships?: CustomerRelationship[]; // Family Tree
-  financialPlans?: FinancialPlanRecord[]; // Saved Financial Plans
+  documents?: CustomerDocument[]; 
+  relationships?: CustomerRelationship[]; 
+  financialPlans?: FinancialPlanRecord[]; 
   interactionHistory: string[];
   status: CustomerStatus;
 }
@@ -110,47 +191,41 @@ export enum ProductStatus {
   INACTIVE = 'Ngưng bán'
 }
 
-// --- UPDATED CALCULATION TYPES ---
 export enum ProductCalculationType {
-  UL_UNIT_LINK = 'UL_UNIT_LINK', // Tỷ lệ * STBH / 1000 (Đầu tư vững tiến cũ)
-  HEALTH_CARE = 'HEALTH_CARE', // Phí cố định theo Tuổi & Gói (Hành trang vui khỏe)
-  WAIVER_CI = 'WAIVER_CI', // Tỷ lệ * STBH / 100 (Hỗ trợ đóng phí)
-  FIXED = 'FIXED', // Nhập tay hoàn toàn
-  RATE_PER_1000_AGE_GENDER = 'RATE_PER_1000_AGE_GENDER', // (STBH / 1000) * Rate[Age][Gender] (Cuộc sống bình an)
-  RATE_PER_1000_TERM = 'RATE_PER_1000_TERM', // (STBH / 1000) * Rate[Age][Gender][Term] (Tương lai tươi sáng, Bệnh lý...)
-  RATE_PER_1000_OCCUPATION = 'RATE_PER_1000_OCCUPATION', // (STBH / 1000) * Rate[OccupationGroup] (Tai nạn)
+  UL_UNIT_LINK = 'UL_UNIT_LINK', 
+  HEALTH_CARE = 'HEALTH_CARE', 
+  WAIVER_CI = 'WAIVER_CI', 
+  FIXED = 'FIXED', 
+  RATE_PER_1000_AGE_GENDER = 'RATE_PER_1000_AGE_GENDER', 
+  RATE_PER_1000_TERM = 'RATE_PER_1000_TERM', 
+  RATE_PER_1000_OCCUPATION = 'RATE_PER_1000_OCCUPATION', 
 }
 
-// --- NEW: DYNAMIC PRODUCT ENGINE TYPES ---
 export enum FormulaType {
-  RATE_BASED = 'RATE_BASED', // Công thức: (STBH / 1000) * Tỷ lệ (Tra bảng)
-  FIXED_FEE = 'FIXED_FEE',   // Công thức: Tra bảng lấy thẳng giá trị (VD: Thẻ sức khỏe)
+  RATE_BASED = 'RATE_BASED', 
+  FIXED_FEE = 'FIXED_FEE',   
 }
 
 export interface ProductCalculationConfig {
   formulaType: FormulaType;
-  // Mapping keys: Tên biến trong hệ thống -> Tên cột trong Excel
   lookupKeys: {
-      age?: string;        // Cột Tuổi
-      gender?: string;     // Cột Giới tính
-      term?: string;       // Cột Thời hạn đóng phí
-      occupation?: string; // Cột Nhóm nghề
-      plan?: string;       // Cột Chương trình (Plan)
-      package?: string;    // Cột Gói (Package - VD: Có/Không miễn thường)
+      age?: string;        
+      gender?: string;     
+      term?: string;       
+      occupation?: string; 
+      plan?: string;       
+      package?: string;    
   };
-  resultKey: string;       // Cột kết quả (Rate hoặc Fee)
+  resultKey: string;       
 }
 
-// --- NEW: PROJECTION CONFIG (For Cash Flow) ---
 export interface ProjectionConfig {
-  defaultInterestRate: number; // e.g. 0.05 (5%)
-  highInterestRate: number; // e.g. 0.065 (6.5%)
-  // Allocation Charge (Phí ban đầu): Map year -> percentage deducted. e.g. {1: 0.85, 2: 0.50 ...}
+  defaultInterestRate: number; 
+  highInterestRate: number; 
   initialCharges: Record<number, number>; 
-  // Loyalty Bonus (Thưởng): Map year -> percentage of AV or Premium
   bonuses: {
       year: number;
-      rate: number; // % of average premium
+      rate: number; 
       type: 'PREMIUM_BASED' | 'ACCOUNT_BASED';
   }[];
 }
@@ -161,16 +236,14 @@ export interface Product {
   code: string;
   type: ProductType;
   status: ProductStatus; 
-  calculationType?: ProductCalculationType; // Legacy support
+  calculationType?: ProductCalculationType; 
   description: string;
   rulesAndTerms: string; 
   pdfUrl?: string;
-  extractedContent?: string; // New: Contains raw text extracted from PDF
-  
-  // --- New Dynamic Fields ---
-  rateTable?: Record<string, any>[]; // Dữ liệu thô từ Excel
-  calculationConfig?: ProductCalculationConfig; // Cấu hình ánh xạ
-  projectionConfig?: ProjectionConfig; // Cấu hình dòng tiền
+  extractedContent?: string; 
+  rateTable?: Record<string, any>[]; 
+  calculationConfig?: ProductCalculationConfig; 
+  projectionConfig?: ProjectionConfig; 
 }
 
 export interface ContractProduct {
@@ -182,8 +255,8 @@ export interface ContractProduct {
   attributes?: {
     plan?: string;
     package?: string;
-    paymentTerm?: number; // Thời hạn đóng phí (Năm)
-    occupationGroup?: number; // Nhóm nghề (1-4)
+    paymentTerm?: number; 
+    occupationGroup?: number; 
     [key: string]: any;
   };
 }
@@ -216,22 +289,20 @@ export interface Contract {
   beneficiary?: string; 
 }
 
-// --- NEW: ILLUSTRATION INTERFACE ---
 export interface Illustration {
   id: string;
   customerId: string;
-  customerName: string; // Snapshot
+  customerName: string; 
   createdAt: string;
   mainProduct: ContractProduct;
   riders: ContractProduct[];
   totalFee: number;
-  reasoning: string; // AI reasoning
+  reasoning: string; 
   status: 'DRAFT' | 'ACCEPTED' | 'REJECTED' | 'CONVERTED';
-  // Snapshot for projection
   projectionSnapshot?: {
       interestRate: number;
       years: number;
-      data: any[]; // The projected data
+      data: any[]; 
   };
 }
 
@@ -250,7 +321,6 @@ export enum AppointmentStatus {
   CANCELLED = 'Đã hủy',
 }
 
-// New Enum for Outcome
 export enum AppointmentResult {
   SUCCESS = 'Thành công / Khách quan tâm',
   RESCHEDULE = 'Khách bận / Hẹn lại',
@@ -271,43 +341,39 @@ export interface Appointment {
   outcomeNote?: string;
 }
 
-// --- NEW SALES TARGET INTERFACE ---
 export interface SalesTargets {
-  weekly: number;   // Mục tiêu tuần
-  monthly: number;  // Mục tiêu tháng
-  quarterly: number; // Mục tiêu quý
-  yearly: number;   // Mục tiêu năm
+  weekly: number;   
+  monthly: number;  
+  quarterly: number; 
+  yearly: number;   
 }
 
-// --- UPDATED AGENT PROFILE INTERFACE ---
 export interface AgentProfile {
   id?: string;
   fullName: string;
   age: number;
   address: string;
-  phone?: string; // New
-  email?: string; // New
-  zalo?: string; // New
-  facebook?: string; // New
-  avatarUrl?: string; // New
+  phone?: string; 
+  email?: string; 
+  zalo?: string; 
+  facebook?: string; 
+  avatarUrl?: string; 
   office: string;
   agentCode: string;
-  title: string; // e.g. MDRT, MBA, Chuyên viên cao cấp
-  bio: string; // Short self-description
-  targets?: SalesTargets; // Added Sales Targets
+  title: string; 
+  bio: string; 
+  targets?: SalesTargets; 
 }
 
-// --- NEW MESSAGE TEMPLATE INTERFACE ---
 export interface MessageTemplate {
   id: string;
   title: string;
-  content: string; // Contains placeholders like {name}, {contract}
+  content: string; 
   category: 'birthday' | 'payment' | 'care' | 'holiday' | 'other';
   icon?: string;
   color?: string;
 }
 
-// --- NEW FINANCIAL PLANNING TYPES ---
 export enum FinancialGoal {
   RETIREMENT = 'Hưu trí an nhàn',
   EDUCATION = 'Qũy học vấn cho con',
@@ -317,11 +383,11 @@ export enum FinancialGoal {
 
 export interface PlanResult {
   goal: FinancialGoal;
-  requiredAmount: number; // Số tiền mục tiêu (Tương lai hoặc Hiện tại tùy loại)
-  currentAmount: number; // Số tiền đã có
-  shortfall: number; // Thiếu hụt
-  monthlySavingNeeded?: number; // Cần tiết kiệm thêm mỗi tháng
-  details: any; // Chi tiết tính toán
+  requiredAmount: number; 
+  currentAmount: number; 
+  shortfall: number; 
+  monthlySavingNeeded?: number; 
+  details: any; 
 }
 
 export interface AppState {
@@ -331,5 +397,5 @@ export interface AppState {
   appointments: Appointment[];
   agentProfile: AgentProfile | null;
   messageTemplates: MessageTemplate[]; 
-  illustrations: Illustration[]; // Added
+  illustrations: Illustration[]; 
 }

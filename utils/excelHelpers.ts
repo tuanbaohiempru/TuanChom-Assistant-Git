@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { Customer, Contract, Gender, CustomerStatus, FinancialStatus, PersonalityType, ReadinessLevel, ContractStatus, PaymentFrequency, Product, ProductType, ContractProduct } from '../types';
+import { Customer, Contract, Gender, CustomerStatus, FinancialStatus, PersonalityType, ReadinessLevel, ContractStatus, PaymentFrequency, Product, ProductType, ContractProduct, IncomeTrend, RiskTolerance, FinancialPriority, MaritalStatus, FinancialRole } from '../types';
 
 // --- HELPERS ---
 
@@ -149,7 +149,11 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
             gender: gender,
             idCard: idCard,
             job: job,
+            occupation: job, // Map job to occupation
             companyAddress: address,
+            maritalStatus: MaritalStatus.UNKNOWN, // Default
+            financialRole: FinancialRole.INDEPENDENT, // Default
+            dependents: children,
             status: CustomerStatus.POTENTIAL,
             interactionHistory: [`Import Excel: ${new Date().toLocaleDateString('vi-VN')}`],
             health: { 
@@ -166,7 +170,28 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
                 previousExperience: '',
                 keyConcerns: '',
                 personality: PersonalityType.ANALYTICAL,
-                readiness: ReadinessLevel.COLD
+                readiness: ReadinessLevel.COLD,
+                
+                // Defaults for required fields
+                incomeMonthly: income ? Number(income.replace(/\D/g, '')) * 1000000 : 0,
+                incomeTrend: IncomeTrend.STABLE,
+                projectedIncome3Years: 0,
+                monthlyExpenses: 0,
+                existingInsurance: {
+                    hasLife: false, lifeSumAssured: 0, lifeFee: 0, lifeTermRemaining: 0,
+                    hasAccident: false, accidentSumAssured: 0,
+                    hasCI: false, ciSumAssured: 0,
+                    hasHealthCare: false, healthCareFee: 0,
+                    dissatisfaction: ''
+                },
+                currentPriority: FinancialPriority.PROTECTION,
+                futurePlans: '',
+                biggestWorry: '',
+                pastExperience: '',
+                influencer: '',
+                buyCondition: '',
+                preference: 'Balanced',
+                riskTolerance: RiskTolerance.MEDIUM
             }
         };
 
