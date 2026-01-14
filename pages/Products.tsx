@@ -3,8 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Product, ProductType, Gender, ProductStatus, ProductCalculationType, FormulaType } from '../types';
 import { ConfirmModal, CurrencyInput } from '../components/Shared';
-import { uploadFile } from '../services/storage'; // Dùng uploadFile thay vì extractText
+import { uploadFile } from '../services/storage'; 
 import { calculateProductFee } from '../services/productCalculator';
+import { extractPdfText } from '../services/geminiService'; // Import extractor
 import { HTVKPlan, HTVKPackage } from '../data/pruHanhTrangVuiKhoe';
 
 interface ProductsPageProps {
@@ -36,6 +37,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
     const [formData, setFormData] = useState<Product>({
         id: '', name: '', code: '', type: ProductType.MAIN, status: ProductStatus.ACTIVE, 
         calculationType: ProductCalculationType.FIXED, description: '', rulesAndTerms: '', pdfUrl: '',
+        extractedContent: '', // Init empty
         rateTable: [],
         calculationConfig: {
             formulaType: FormulaType.RATE_BASED,
@@ -73,7 +75,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
     const openAdd = () => {
         setFormData({ 
             id: '', name: '', code: '', type: ProductType.MAIN, status: ProductStatus.ACTIVE, 
-            calculationType: ProductCalculationType.FIXED, description: '', rulesAndTerms: '', pdfUrl: '',
+            calculationType: ProductCalculationType.FIXED, description: '', rulesAndTerms: '', pdfUrl: '', extractedContent: '',
             rateTable: [],
             calculationConfig: { formulaType: FormulaType.RATE_BASED, lookupKeys: {}, resultKey: '' }
         });
@@ -112,21 +114,39 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
         setShowModal(false);
     };
 
-    // Updated Handler: Upload to Storage instead of extracting text
+    // Updated Handler: Upload -> Storage -> Extract Text -> Save to Form
     const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         
         setIsUploadingPdf(true);
         try {
+            // 1. Upload to Firebase Storage
             const url = await uploadFile(file, 'product-docs');
+            
+            // 2. Call Cloud Function to Extract Text
+            // Note: This might take 10-30s for large files
+            let extracted = "";
+            try {
+                const res = await extractPdfText(url);
+                extracted = res;
+                if (!extracted) {
+                    alert("Cảnh báo: Không thể đọc văn bản từ file này. AI sẽ không có dữ liệu chi tiết.");
+                }
+            } catch (err) {
+                console.error("Extraction error", err);
+                alert("Lỗi khi đọc file PDF. Vui lòng thử lại sau.");
+            }
+
             setFormData(prev => ({ 
                 ...prev, 
                 pdfUrl: url,
-                // Optional: Clear old extracted text to avoid confusion, or keep as fallback
-                rulesAndTerms: prev.rulesAndTerms || `Tài liệu gốc đã được tải lên: ${file.name}`
+                extractedContent: extracted,
+                rulesAndTerms: prev.rulesAndTerms || `Tài liệu gốc: ${file.name}`
             }));
-            alert("Đã tải tài liệu lên thành công! AI sẽ đọc trực tiếp file này.");
+            
+            alert("Đã tải và xử lý tài liệu thành công!");
+
         } catch (error) {
             alert("Lỗi upload: " + error);
         } finally {
@@ -227,10 +247,12 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                             <span className="text-xs font-bold text-pru-red dark:text-red-400 uppercase tracking-wide">{p.type}</span>
-                            {p.pdfUrl && (
-                                <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded flex items-center font-bold shadow-sm" title="Sản phẩm này đã có tài liệu điều khoản PDF">
-                                    <i className="fas fa-check-circle mr-1"></i> Đã có điều khoản
+                            {p.extractedContent ? (
+                                <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded flex items-center font-bold shadow-sm" title="AI đã học nội dung file này">
+                                    <i className="fas fa-brain mr-1"></i> Đã học
                                 </span>
+                            ) : (
+                                p.pdfUrl && <span className="text-[10px] bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded border border-yellow-200"><i className="fas fa-exclamation-triangle"></i> Cần cập nhật</span>
                             )}
                             {p.rateTable && p.rateTable.length > 0 && (
                                 <span className="text-[10px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded flex items-center font-bold shadow-sm" title="Đã có biểu phí động">
@@ -283,33 +305,31 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                     <div><label className="label-text">Mô tả ngắn</label><textarea className="input-field" rows={2} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
                                     
                                     {/* PDF UPLOAD SECTION */}
-                                    <div className={`p-4 rounded-lg border transition-colors ${formData.pdfUrl ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30' : 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30'}`}>
+                                    <div className={`p-4 rounded-lg border transition-colors ${formData.extractedContent ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
                                         <div className="flex justify-between items-center mb-2">
-                                            <label className={`label-text mb-0 flex items-center font-bold ${formData.pdfUrl ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
-                                                <i className={`fas ${formData.pdfUrl ? 'fa-check-circle' : 'fa-book'} mr-2`}></i> 
-                                                {formData.pdfUrl ? 'Đã có tài liệu điều khoản' : 'Tài liệu Quy tắc & Điều khoản (PDF)'}
+                                            <label className={`label-text mb-0 flex items-center font-bold ${formData.extractedContent ? 'text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                                                <i className={`fas ${formData.extractedContent ? 'fa-brain' : 'fa-file-pdf'} mr-2`}></i> 
+                                                {formData.extractedContent ? 'AI đã học nội dung' : 'Tài liệu sản phẩm (PDF)'}
                                             </label>
-                                            <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold flex items-center transition shadow-sm ${formData.pdfUrl ? 'bg-white text-green-700 border border-green-200 hover:bg-green-50' : 'bg-red-600 text-white hover:bg-red-700'} ${isUploadingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            <label className={`cursor-pointer px-3 py-1.5 rounded text-xs font-bold flex items-center transition shadow-sm ${formData.extractedContent ? 'bg-white text-green-700 border border-green-200 hover:bg-green-50' : 'bg-red-600 text-white hover:bg-red-700'} ${isUploadingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                                 {isUploadingPdf ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-cloud-upload-alt mr-1"></i>}
-                                                {isUploadingPdf ? 'Đang tải...' : (formData.pdfUrl ? 'Tải lại file khác' : 'Upload File PDF')}
+                                                {isUploadingPdf ? 'Đang xử lý...' : (formData.extractedContent ? 'Cập nhật PDF mới' : 'Upload PDF')}
                                                 <input type="file" className="hidden" accept="application/pdf" onChange={handlePdfUpload} disabled={isUploadingPdf} />
                                             </label>
                                         </div>
                                         
-                                        {formData.pdfUrl ? (
-                                            <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-2 rounded border border-green-200 dark:border-green-800/50">
-                                                <a href={formData.pdfUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline truncate flex-1 mr-2 flex items-center font-medium">
-                                                    <i className="fas fa-file-pdf text-red-500 mr-2 text-lg"></i>
-                                                    Xem file hiện tại
-                                                </a>
-                                                <button onClick={() => setFormData({...formData, pdfUrl: ''})} className="text-gray-400 hover:text-red-500 px-2" title="Xóa file"><i className="fas fa-trash-alt"></i></button>
+                                        {formData.extractedContent ? (
+                                            <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                                                <i className="fas fa-check-circle mr-1"></i> Hệ thống đã lưu trữ {formData.extractedContent.length.toLocaleString()} ký tự từ tài liệu.
+                                                <br/>
+                                                <span className="italic text-gray-500">Nếu bạn cập nhật file mới, vui lòng upload lại để AI học lại.</span>
                                             </div>
                                         ) : (
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">Chưa có tài liệu. Upload PDF để AI học và trả lời chính xác hơn.</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                                                Upload file PDF điều khoản để AI có thể trả lời câu hỏi chi tiết về sản phẩm này.
+                                                <br/><strong>Lưu ý:</strong> Quá trình xử lý có thể mất 10-30 giây.
+                                            </p>
                                         )}
-                                        <p className={`text-[10px] mt-2 italic ${formData.pdfUrl ? 'text-green-600 dark:text-green-400' : 'text-red-400'}`}>
-                                            * Lưu ý: AI sẽ đọc trực tiếp nội dung từ file PDF này khi tư vấn.
-                                        </p>
                                     </div>
                                 </div>
                             )}
@@ -468,142 +488,66 @@ const ProductsPage: React.FC<ProductsPageProps> = ({ products, onAdd, onUpdate, 
                                                             <select className="input-field text-xs py-1" value={testInputs.htvkPlan} onChange={e => setTestInputs({...testInputs, htvkPlan: e.target.value as HTVKPlan})}>
                                                                 {Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}
                                                             </select>
-                                                            <select className="input-field text-xs py-1" value={testInputs.htvkPackage} onChange={e => setTestInputs({...testInputs, htvkPackage: e.target.value as any})}>
-                                                                <option value={HTVKPackage.STANDARD}>Chuẩn</option>
-                                                                <option value={HTVKPackage.GOI_1}>Gói 1 (Có MT)</option>
-                                                                <option value={HTVKPackage.GOI_2}>Gói 2 (Không MT)</option>
+                                                            <select className="input-field text-xs py-1" value={testInputs.htvkPackage} onChange={e => setTestInputs({...testInputs, htvkPackage: e.target.value as HTVKPackage})}>
+                                                                {Object.values(HTVKPackage).map(p => <option key={p} value={p}>{p}</option>)}
                                                             </select>
                                                         </>
                                                     )}
                                                 </div>
-                                                <button 
-                                                    onClick={runTestCalculation}
-                                                    disabled={!formData.calculationConfig?.resultKey}
-                                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 rounded-lg disabled:opacity-50"
-                                                >
-                                                    Tính thử ngay
-                                                </button>
-                                            </div>
-
-                                            {/* Preview Data Table */}
-                                            <div>
-                                                <label className="label-text mb-2">Xem trước dữ liệu (5 dòng đầu)</label>
-                                                <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                    <table className="min-w-full text-xs text-left">
-                                                        <thead className="bg-gray-100 dark:bg-gray-800 font-bold text-gray-600 dark:text-gray-300">
-                                                            <tr>
-                                                                {excelColumns.map(c => <th key={c} className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 whitespace-nowrap">{c}</th>)}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-900">
-                                                            {previewData.map((row, idx) => (
-                                                                <tr key={idx}>
-                                                                    {excelColumns.map(c => <td key={`${idx}-${c}`} className="px-3 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">{row[c]}</td>)}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
+                                                <button onClick={runTestCalculation} className="w-full py-1.5 bg-indigo-600 text-white rounded text-xs font-bold hover:bg-indigo-700 transition">Tính thử</button>
                                             </div>
                                         </div>
                                     )}
                                 </div>
                             )}
                          </div>
-                         
-                         <div className="flex justify-end gap-3 p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                            <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>
-                            <button onClick={handleSubmit} className="px-5 py-2 bg-pru-red text-white rounded-lg font-bold hover:bg-red-700 shadow-md">Lưu Sản Phẩm</button>
-                        </div>
+
+                         {/* Footer */}
+                         <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
+                             <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>
+                             <button onClick={handleSubmit} className="px-5 py-2 bg-pru-red text-white font-bold rounded-lg hover:bg-red-700 shadow-md">Lưu Sản Phẩm</button>
+                         </div>
                     </div>
                 </div>
             )}
 
-            {/* GLOBAL CALCULATOR MODAL */}
+            <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa sản phẩm?" message={`Bạn có chắc muốn xóa sản phẩm ${deleteConfirm.name}?`} onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({ isOpen: false, id: '', name: '' })} />
+
+            {/* QUICK CALCULATOR MODAL (GLOBAL) */}
             {showCalc && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
-                    <div className="bg-white dark:bg-pru-card rounded-xl max-w-md w-full p-6 shadow-2xl border border-gray-100 dark:border-gray-700 transition-colors">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white dark:bg-pru-card rounded-xl max-w-sm w-full p-6 shadow-2xl transition-colors">
                         <div className="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
-                             <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                                <i className="fas fa-calculator text-indigo-500"></i> Tính Phí Nhanh
-                             </h3>
-                             <button onClick={() => setShowCalc(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i className="fas fa-times text-xl"></i></button>
+                            <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100">Tính Phí Nhanh</h3>
+                            <button onClick={() => setShowCalc(false)}><i className="fas fa-times text-gray-400"></i></button>
                         </div>
-
-                        <div className="space-y-4">
-                            <select className="input-field font-bold text-pru-red dark:text-red-400" value={calcType} onChange={(e) => setCalcType(e.target.value as ProductCalculationType)}>
-                                <option value={ProductCalculationType.RATE_PER_1000_AGE_GENDER}>Bảo vệ & Đầu tư (Theo tuổi)</option>
-                                <option value={ProductCalculationType.RATE_PER_1000_TERM}>Tích lũy & Bệnh Lý (Theo thời hạn)</option>
-                                <option value={ProductCalculationType.RATE_PER_1000_OCCUPATION}>Tai Nạn (Theo nhóm nghề)</option>
-                                <option value={ProductCalculationType.HEALTH_CARE}>Hành Trang Vui Khỏe</option>
+                        <div className="space-y-3">
+                            <select className="input-field" value={inputData.productCode} onChange={e => setInputData({...inputData, productCode: e.target.value})}>
+                                <option value="P-DTVT">Đầu Tư Vững Tiến</option>
+                                <option value="P-CSBA">Cuộc Sống Bình An</option>
+                                <option value="P-TLTS">Tương Lai Tươi Sáng</option>
                             </select>
-
-                            {calcType === ProductCalculationType.RATE_PER_1000_AGE_GENDER && (
-                                <div>
-                                    <label className="label-text">Dòng sản phẩm</label>
-                                    <select className="input-field" value={inputData.productCode} onChange={(e) => setInputData({...inputData, productCode: e.target.value})}>
-                                        <option value="P-DTVT">Đầu Tư Vững Tiến / Linh Hoạt / BV Tối Đa</option>
-                                        <option value="P-CSBA">Cuộc Sống Bình An (Truyền thống)</option>
-                                    </select>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                {calcType !== ProductCalculationType.RATE_PER_1000_OCCUPATION && (
-                                    <>
-                                        <div><label className="label-text">Giới tính</label><select className="input-field" value={inputData.gender} onChange={(e: any) => setInputData({...inputData, gender: e.target.value})}><option value={Gender.MALE}>Nam</option><option value={Gender.FEMALE}>Nữ</option></select></div>
-                                        <div><label className="label-text">Tuổi</label><input type="number" className="input-field" value={inputData.age} onChange={e => setInputData({...inputData, age: Number(e.target.value)})} min={0} max={70} /></div>
-                                    </>
-                                )}
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="number" className="input-field" placeholder="Tuổi" value={inputData.age} onChange={e => setInputData({...inputData, age: Number(e.target.value)})} />
+                                <select className="input-field" value={inputData.gender} onChange={e => setInputData({...inputData, gender: e.target.value as Gender})}><option value={Gender.MALE}>Nam</option><option value={Gender.FEMALE}>Nữ</option></select>
                             </div>
-
-                            {calcType !== ProductCalculationType.HEALTH_CARE && (
-                                <div><label className="label-text">Số tiền bảo hiểm (STBH)</label><CurrencyInput className="input-field" value={inputData.sumAssured} onChange={v => setInputData({...inputData, sumAssured: v})} /></div>
-                            )}
-
-                            {calcType === ProductCalculationType.RATE_PER_1000_TERM && (
-                                <div><label className="label-text">Thời hạn đóng phí (Năm)</label><select className="input-field" value={inputData.term} onChange={(e) => setInputData({...inputData, term: Number(e.target.value)})}>{Array.from({length: 25}, (_, i) => i + 5).map(y => <option key={y} value={y}>{y} năm</option>)}</select></div>
-                            )}
-
-                            {calcType === ProductCalculationType.RATE_PER_1000_OCCUPATION && (
-                                <div><label className="label-text">Nhóm nghề</label><select className="input-field" value={inputData.occupationGroup} onChange={(e) => setInputData({...inputData, occupationGroup: Number(e.target.value)})}>
-                                        <option value="1">Nhóm 1 (Hành chính)</option><option value="2">Nhóm 2 (Nhẹ)</option><option value="3">Nhóm 3 (Nặng)</option><option value="4">Nhóm 4 (Nguy hiểm)</option>
-                                    </select>
-                                </div>
-                            )}
-
-                            {calcType === ProductCalculationType.HEALTH_CARE && (
-                                <div className="space-y-4">
-                                    <div><label className="label-text">Chương trình</label><select className="input-field" value={inputData.htvkPlan} onChange={(e: any) => setInputData({...inputData, htvkPlan: e.target.value})}>{Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                    {(inputData.htvkPlan === HTVKPlan.TOAN_DIEN || inputData.htvkPlan === HTVKPlan.HOAN_HAO) && (
-                                        <div><label className="label-text">Loại thẻ</label><select className="input-field" value={inputData.htvkPackage} onChange={(e: any) => setInputData({...inputData, htvkPackage: e.target.value})}><option value={HTVKPackage.STANDARD}>Chuẩn</option><option value={HTVKPackage.GOI_1}>Gói 1 (Có MT)</option><option value={HTVKPackage.GOI_2}>Gói 2 (Không MT)</option></select></div>
-                                    )}
-                                </div>
-                            )}
-
-                            {calcResult !== null && (
-                                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 animate-fade-in space-y-2">
-                                    <div>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold text-center">Phí Bảo Hiểm (Năm)</p>
-                                        <p className="text-2xl font-bold text-pru-red dark:text-red-400 text-center">
-                                            {calcResult > 0 ? `${calcResult.toLocaleString()} đ` : 'Không có dữ liệu'}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
+                            <CurrencyInput className="input-field font-bold" placeholder="Số tiền bảo hiểm" value={inputData.sumAssured} onChange={v => setInputData({...inputData, sumAssured: v})} />
+                            
+                            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center border border-green-100 dark:border-green-800">
+                                <p className="text-xs text-green-600 dark:text-green-400 font-bold uppercase">Phí ước tính</p>
+                                <p className="text-2xl font-black text-green-700 dark:text-green-300">{calcResult?.toLocaleString()} đ</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
-            
-            <ConfirmModal isOpen={deleteConfirm.isOpen} title="Xóa sản phẩm?" message={`Xóa sản phẩm ${deleteConfirm.name}?`} onConfirm={() => onDelete(deleteConfirm.id)} onClose={() => setDeleteConfirm({ isOpen: false, id: '', name: '' })} />
 
             <style>{`
-                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.625rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; background-color: #fff; color: #111827; }
+                .label-text { display: block; font-size: 0.7rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem; }
+                .dark .label-text { color: #9ca3af; }
+                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; background-color: #fff; color: #111827; }
                 .dark .input-field { background-color: #111827; border-color: #374151; color: #f3f4f6; }
                 .input-field:focus { border-color: #ed1b2e; ring: 1px solid #ed1b2e; }
-                .label-text { display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem; }
-                .dark .label-text { color: #9ca3af; }
             `}</style>
         </div>
     );

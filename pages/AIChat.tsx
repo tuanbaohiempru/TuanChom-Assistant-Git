@@ -36,8 +36,8 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Check valid files for UI indicator
-  const hasPdfFiles = state.products.some(p => p.status === ProductStatus.ACTIVE && p.pdfUrl);
+  // Check valid files for UI indicator - now checking extractedContent
+  const hasKnowledge = state.products.some(p => p.status === ProductStatus.ACTIVE && p.extractedContent);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,7 +48,7 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
         scrollToBottom();
         setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [messages, isOpen, isExpanded]);
+  }, [isOpen]);
 
   // --- Voice Recognition Setup ---
   useEffect(() => {
@@ -178,12 +178,12 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                 </div>
                 <div>
                     <h3 className="font-bold text-base">TuanChom AI</h3>
-                    {hasPdfFiles ? (
+                    {hasKnowledge ? (
                         <p className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full inline-flex items-center mt-1">
-                            <i className="fas fa-book mr-1"></i> Đã kết nối tài liệu
+                            <i className="fas fa-brain mr-1"></i> Đã học dữ liệu SP
                         </p>
                     ) : (
-                        <p className="text-[10px] opacity-80 mt-1">Chưa có tài liệu sản phẩm</p>
+                        <p className="text-[10px] opacity-80 mt-1">Chưa có dữ liệu học</p>
                     )}
                 </div>
             </div>
@@ -257,7 +257,7 @@ const AIChat: React.FC<AIChatProps> = ({ state, isOpen, setIsOpen }) => {
                     <div className="w-2 h-2 bg-pru-red/60 rounded-full animate-bounce" style={{animationDelay: '0.15s'}}></div>
                     <div className="w-2 h-2 bg-pru-red rounded-full animate-bounce" style={{animationDelay: '0.3s'}}></div>
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-2 italic">Đang tra cứu tài liệu...</p>
+                  <p className="text-[10px] text-gray-400 mt-2 italic">Đang suy nghĩ...</p>
                 </div>
               </div>
             )}

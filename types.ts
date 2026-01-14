@@ -165,6 +165,7 @@ export interface Product {
   description: string;
   rulesAndTerms: string; 
   pdfUrl?: string;
+  extractedContent?: string; // New: Contains raw text extracted from PDF
   
   // --- New Dynamic Fields ---
   rateTable?: Record<string, any>[]; // Dữ liệu thô từ Excel
