@@ -95,13 +95,84 @@ export const generateFinancialAdvice = async (customerName: string, planResult: 
     return await callAI({ endpoint: 'generateContent', model: DEFAULT_MODEL, contents: prompt });
 };
 
+// --- INTELLIGENT CONTEXT BUILDER (FIXED LOGIC) ---
+const findRelevantContext = (query: string, state: AppState): string => {
+    const lowerQuery = query.toLowerCase();
+    let context = "";
+    
+    // 1. Identify Customers mentioned in the query
+    // Search by Full Name or First Name (last word)
+    const matchedCustomers = state.customers.filter(c => {
+        const fullName = c.fullName.toLowerCase();
+        const firstName = fullName.split(' ').pop() || '';
+        return fullName.includes(lowerQuery) || (firstName.length > 2 && lowerQuery.includes(firstName));
+    });
+
+    if (matchedCustomers.length > 0) {
+        context += "\n--- CHI TIẾT KHÁCH HÀNG LIÊN QUAN (ƯU TIÊN CAO) ---\n";
+        
+        matchedCustomers.forEach(c => {
+            // A. Personal Info
+            context += `1. KHÁCH HÀNG: ${c.fullName} (ID: ${c.id})\n`;
+            context += `   - Năm sinh: ${new Date(c.dob).getFullYear()}, Giới tính: ${c.gender}\n`;
+            context += `   - Nghề nghiệp: ${c.job || c.occupation}, SĐT: ${c.phone}\n`;
+            context += `   - Tình trạng: ${c.status}\n`;
+
+            // B. Contracts (FULL LIST)
+            const myContracts = state.contracts.filter(ct => ct.customerId === c.id);
+            const totalFee = myContracts.reduce((sum, ct) => sum + ct.totalFee, 0);
+            
+            context += `   - TỔNG QUAN HỢP ĐỒNG: Đang có ${myContracts.length} hợp đồng. TỔNG PHÍ ĐÓNG HẰNG NĂM: ${totalFee.toLocaleString()} VNĐ.\n`;
+            
+            if (myContracts.length > 0) {
+                context += `   - CHI TIẾT HỢP ĐỒNG:\n`;
+                myContracts.forEach((ct, idx) => {
+                    context += `     + HĐ ${idx+1}: Số ${ct.contractNumber} (${ct.status}). SP Chính: ${ct.mainProduct.productName}. Phí: ${ct.totalFee.toLocaleString()} VNĐ. Ngày hiệu lực: ${ct.effectiveDate}.\n`;
+                    if (ct.riders.length > 0) {
+                        const riderNames = ct.riders.map(r => r.productName).join(', ');
+                        context += `       (Kèm theo ${ct.riders.length} sản phẩm bổ trợ: ${riderNames})\n`;
+                    }
+                });
+            } else {
+                context += `   - Chưa có hợp đồng nào trong hệ thống.\n`;
+            }
+
+            // C. Relationships (Decoded)
+            if (c.relationships && c.relationships.length > 0) {
+                const relations = c.relationships.map(r => {
+                    const relative = state.customers.find(rel => rel.id === r.relatedCustomerId);
+                    return relative ? `${r.relationship}: ${relative.fullName}` : `${r.relationship}: [Không tìm thấy tên]`;
+                }).join('; ');
+                context += `   - GIA ĐÌNH & MỐI QUAN HỆ: ${relations}\n`;
+            } else {
+                context += `   - Chưa có thông tin gia đình.\n`;
+            }
+            context += `\n`;
+        });
+    }
+
+    return context;
+};
+
 const prepareJsonContext = (state: AppState) => {
-  const recentCustomers = state.customers.slice(0, 30);
-  const recentContracts = state.contracts.slice(0, 30);
+  // General summary for broad questions
+  const recentCustomers = state.customers.slice(0, 50).map(c => ({ 
+      name: c.fullName, 
+      id: c.id, 
+      status: c.status 
+  }));
+  
+  // High level stats
+  const totalContracts = state.contracts.length;
+  const activeContracts = state.contracts.filter(c => c.status === 'Đang hiệu lực').length;
+
   return JSON.stringify({
-    customers: recentCustomers.map(c => ({ name: c.fullName, id: c.id, health: c.health, status: c.status })),
-    contracts: recentContracts.map(c => ({ number: c.contractNumber, product: c.mainProduct.productName, fee: c.totalFee, status: c.status })),
-    products_summary: state.products.map(p => ({ name: p.name, type: p.type, status: p.status }))
+    summary: {
+        total_customers: state.customers.length,
+        total_contracts: totalContracts,
+        active_contracts: activeContracts
+    },
+    recent_customers_list: recentCustomers
   });
 };
 
@@ -122,7 +193,7 @@ export const chatWithData = async (
   history: { role: 'user' | 'model'; text: string }[]
 ): Promise<string> => {
     
-    // 1. Collect Knowledge Base from Extracted Text
+    // 1. Collect Knowledge Base from Extracted Text (Product Manuals)
     const activeProducts = appState.products.filter(p => p.status === ProductStatus.ACTIVE);
     let knowledgeBase = "";
     
@@ -136,24 +207,28 @@ export const chatWithData = async (
         knowledgeBase = "Hiện chưa có tài liệu sản phẩm nào được tải lên hệ thống. Hãy trả lời dựa trên kiến thức chung về bảo hiểm Prudential.";
     }
 
-    const jsonData = prepareJsonContext(appState);
+    // 2. Get Specific Context (The Fix for "Chi Thanh")
+    const specificContext = findRelevantContext(query, appState);
+    const generalContext = prepareJsonContext(appState);
 
     // Prompt RAG
-    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Bảo hiểm Prudential.
+    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Bảo hiểm Prudential chuyên nghiệp.
     
-    NGUỒN DỮ LIỆU (KNOWLEDGE BASE):
-    Dưới đây là nội dung chi tiết từ các tài liệu sản phẩm đã được trích xuất. BẠN PHẢI ƯU TIÊN SỬ DỤNG THÔNG TIN NÀY ĐỂ TRẢ LỜI.
+    DỮ LIỆU CỤ THỂ CẦN CHÚ Ý (QUAN TRỌNG NHẤT):
+    ${specificContext}
     
+    NGUỒN DỮ LIỆU SẢN PHẨM (KNOWLEDGE BASE):
+    Dưới đây là nội dung chi tiết từ các tài liệu sản phẩm đã được trích xuất.
     ${knowledgeBase}
     
-    QUY TẮC TUYỆT ĐỐI:
-    1. Khi được hỏi về "Quyền lợi", "Chi trả", "Hạn mức", "Số tiền giường", "Phẫu thuật"... BẠN PHẢI TRA CỨU TRONG NGUỒN DỮ LIỆU TRÊN.
-    2. Trích dẫn số liệu cụ thể nếu tìm thấy.
-    3. Nếu không tìm thấy thông tin trong dữ liệu, hãy nói rõ: "Tôi không tìm thấy thông tin này trong tài liệu sản phẩm hiện có."
-    4. Trả lời ngắn gọn, chuyên nghiệp.
-
-    Dữ liệu tóm tắt trên ứng dụng (tham khảo thêm):
-    ${jsonData}
+    DỮ LIỆU TỔNG QUAN HỆ THỐNG:
+    ${generalContext}
+    
+    QUY TẮC TRẢ LỜI:
+    1. **Ưu tiên dữ liệu cụ thể**: Nếu phần "DỮ LIỆU CỤ THỂ" có thông tin về khách hàng được hỏi (ví dụ: Chị Thanh), hãy dùng thông tin đó (tổng phí, danh sách hợp đồng, gia đình) để trả lời chính xác tuyệt đối. Đừng bịa đặt nếu dữ liệu đã có.
+    2. **Trả lời về Sản phẩm**: Nếu câu hỏi về quyền lợi/điều khoản, hãy tra cứu trong "NGUỒN DỮ LIỆU SẢN PHẨM".
+    3. **Tính toán**: Nếu dữ liệu đã cung cấp con số Tổng phí, hãy dùng con số đó.
+    4. **Phong cách**: Ngắn gọn, chuyên nghiệp, xưng "em" hoặc "tôi".
     `;
 
     const cleanHistory = sanitizeHistory(history);
@@ -208,11 +283,11 @@ export const consultantChat = async (
 
     // 3. Family & Contracts Context
     const contractInfo = contracts.length > 0 
-        ? contracts.map(c => `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status})`).join('\n') 
+        ? contracts.map(c => `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status}). Phí: ${c.totalFee.toLocaleString()}đ`).join('\n') 
         : "Chưa có hợp đồng nào.";
     
     const familyInfo = familyContext.length > 0
-        ? familyContext.map(f => `- ${f.relationship}: ${f.name} (${f.age} tuổi)`).join('\n')
+        ? familyContext.map(f => `- ${f.relationship}: ${f.name || 'Người thân'} `).join('\n')
         : "Chưa có thông tin gia đình.";
 
     // 4. Financial Plan Context (If available)
