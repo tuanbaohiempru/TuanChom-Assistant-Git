@@ -1,4 +1,3 @@
-
 import * as XLSX from 'xlsx';
 import { Customer, Contract, Gender, CustomerStatus, FinancialStatus, PersonalityType, ReadinessLevel, ContractStatus, PaymentFrequency, Product, ProductType, ContractProduct, IncomeTrend, RiskTolerance, FinancialPriority, MaritalStatus, FinancialRole } from '../types';
 
@@ -156,6 +155,8 @@ export const processCustomerImport = async (file: File, existingCustomers: Custo
             dependents: children,
             status: CustomerStatus.POTENTIAL,
             interactionHistory: [`Import Excel: ${new Date().toLocaleDateString('vi-VN')}`],
+            timeline: [], // Initialize empty timeline
+            claims: [],   // Initialize empty claims
             health: { 
                 medicalHistory: history, 
                 height: height, 

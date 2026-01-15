@@ -132,7 +132,8 @@ export interface CustomerDocument {
   id: string;
   name: string;
   url: string;
-  type: string; // 'image' | 'pdf' | 'other'
+  type: 'image' | 'pdf' | 'other';
+  category: 'personal' | 'medical' | 'contract' | 'claim';
   uploadDate: string;
 }
 
@@ -157,6 +158,47 @@ export interface FinancialPlanRecord {
   result: PlanResult;
 }
 
+// --- CUSTOMER 360: TIMELINE & CLAIMS ---
+
+export enum InteractionType {
+  NOTE = 'Ghi chú',
+  CALL = 'Cuộc gọi',
+  MEETING = 'Gặp mặt',
+  ZALO = 'Chat Zalo',
+  CLAIM = 'Bồi thường',
+  CONTRACT = 'Hợp đồng',
+  SYSTEM = 'Hệ thống'
+}
+
+export interface TimelineItem {
+  id: string;
+  date: string; // ISO Date Time
+  type: InteractionType;
+  title: string;
+  content: string;
+  result?: string; // e.g. "Khách quan tâm", "Đã chốt"
+  attachments?: string[]; // URLs
+}
+
+export enum ClaimStatus {
+  PENDING = 'Đang xử lý',
+  APPROVED = 'Đã chi trả',
+  REJECTED = 'Từ chối',
+  NEED_INFO = 'Bổ sung hồ sơ'
+}
+
+export interface ClaimRecord {
+  id: string;
+  dateSubmitted: string;
+  contractId: string;
+  benefitType: string; // Nằm viện, Tai nạn, Bệnh lý...
+  amountRequest: number;
+  amountPaid: number;
+  status: ClaimStatus;
+  notes: string;
+  documents: CustomerDocument[];
+}
+
 export interface Customer {
   id: string;
   fullName: string;
@@ -176,7 +218,14 @@ export interface Customer {
   documents?: CustomerDocument[]; 
   relationships?: CustomerRelationship[]; 
   financialPlans?: FinancialPlanRecord[]; 
+  
+  // Customer 360 Upgrades
+  timeline: TimelineItem[]; // Replaces simple interactionHistory
+  claims: ClaimRecord[];
+  
+  // Legacy support (to avoid breaking old code immediately)
   interactionHistory: string[];
+  
   status: CustomerStatus;
 }
 

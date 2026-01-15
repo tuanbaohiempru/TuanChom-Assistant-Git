@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AIChat from './pages/AIChat';
 import CustomersPage from './pages/Customers';
+import CustomerDetail from './pages/CustomerDetail';
 import ContractsPage from './pages/Contracts';
 import ProductsPage from './pages/Products';
 import AppointmentsPage from './pages/Appointments';
@@ -259,6 +260,13 @@ const App: React.FC = () => {
                                     onDelete={deleteCustomer} 
                                     onConvertIllustration={convertIllustration}
                                     onDeleteIllustration={deleteIllustration}
+                                />
+                            } />
+                            <Route path="/customers/:id" element={
+                                <CustomerDetail 
+                                    customers={state.customers} 
+                                    contracts={state.contracts} 
+                                    onUpdateCustomer={updateCustomer}
                                 />
                             } />
                             <Route path="/product-advisory" element={

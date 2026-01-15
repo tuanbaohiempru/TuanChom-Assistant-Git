@@ -1,5 +1,5 @@
 
-import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, ProductCalculationType, IncomeTrend, RiskTolerance, FinancialPriority, MaritalStatus, FinancialRole } from './types';
+import { Customer, CustomerStatus, Product, ProductType, ProductStatus, Contract, ContractStatus, Appointment, AppointmentType, AppointmentStatus, PaymentFrequency, Gender, FinancialStatus, PersonalityType, ReadinessLevel, ProductCalculationType, IncomeTrend, RiskTolerance, FinancialPriority, MaritalStatus, FinancialRole, InteractionType, ClaimStatus } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -163,6 +163,11 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       riskTolerance: RiskTolerance.MEDIUM
     },
     interactionHistory: ['2023-01-10: Tư vấn lần đầu', '2023-01-15: Ký hợp đồng'],
+    timeline: [
+        { id: 't1', date: '2023-01-15T10:00:00', type: InteractionType.CONTRACT, title: 'Ký hợp đồng', content: 'Khách hàng đã ký HĐ 78900123', result: 'Thành công' },
+        { id: 't2', date: '2023-01-10T09:00:00', type: InteractionType.MEETING, title: 'Tư vấn lần đầu', content: 'Gặp tại cafe Highland, tư vấn giải pháp hưu trí', result: 'Khách quan tâm' }
+    ],
+    claims: [],
     status: CustomerStatus.SIGNED
   },
   {
@@ -215,6 +220,10 @@ export const INITIAL_CUSTOMERS: Customer[] = [
       riskTolerance: RiskTolerance.HIGH
     },
     interactionHistory: ['2023-05-20: Gặp cafe giới thiệu sản phẩm'],
+    timeline: [
+        { id: 't3', date: '2023-05-20T14:30:00', type: InteractionType.MEETING, title: 'Giới thiệu sản phẩm', content: 'Giới thiệu dòng Đầu tư linh hoạt', result: 'Cần suy nghĩ thêm' }
+    ],
+    claims: [],
     status: CustomerStatus.ADVISING
   }
 ];
