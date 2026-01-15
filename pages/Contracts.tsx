@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Contract, Customer, Product, ProductType, ContractStatus, PaymentFrequency, ProductCalculationType, ContractProduct, Gender, ProductStatus } from '../types';
 import { SearchableCustomerSelect, CurrencyInput, ConfirmModal, formatDateVN } from '../components/Shared';
@@ -173,7 +172,10 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 insuredName: customers.find(c => c.id === prev.customerId)?.fullName || '',
                 fee: 0,
                 sumAssured: 0,
-                attributes: {}
+                attributes: {
+                    paymentTerm: 10, // Default term
+                    occupationGroup: 1 // Default occupation
+                }
             }]
         }));
     };
@@ -184,25 +186,47 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         setFormData(prev => ({ ...prev, riders: newRiders }));
     };
 
-    const updateRider = (index: number, updates: Partial<ContractProduct>) => {
+    const updateRider = (index: number, updates: Partial<ContractProduct> | { attributes: any }) => {
         const newRiders = [...formData.riders];
-        const currentRider = { ...newRiders[index], ...updates };
+        // Deep merge attributes if present
+        let currentRider = { ...newRiders[index] };
         
-        if (updates.productId) {
-            const p = products.find(prod => prod.id === updates.productId);
+        if ('attributes' in updates) {
+            currentRider.attributes = { ...currentRider.attributes, ...updates.attributes };
+            // Remove attributes from updates to avoid overwriting the merged object
+            const { attributes, ...rest } = updates as any;
+            currentRider = { ...currentRider, ...rest };
+        } else {
+            currentRider = { ...currentRider, ...updates };
+        }
+        
+        // Handle Product Selection Change
+        const updatesWithProduct = updates as Partial<ContractProduct>;
+        if (updatesWithProduct.productId) {
+            const p = products.find(prod => prod.id === updatesWithProduct.productId);
             if (p) {
                 currentRider.productName = p.name;
+                currentRider.attributes = {
+                    ...currentRider.attributes,
+                    paymentTerm: 10, // Reset default
+                    occupationGroup: 1, // Reset default
+                };
                 if (p.calculationType === ProductCalculationType.HEALTH_CARE) {
                     currentRider.attributes = { ...currentRider.attributes, plan: HTVKPlan.NANG_CAO, package: HTVKPackage.STANDARD };
                 }
             }
         }
 
+        // --- Recalculate Fee ---
         const product = products.find(p => p.id === currentRider.productId);
         const customer = customers.find(c => c.fullName === currentRider.insuredName) || customers.find(c => c.id === formData.customerId);
         
         if (product && customer) {
             const age = calculateAge(customer.dob);
+            
+            // Log logic for debugging
+            // console.log("Calculating Rider:", product.name, "Occup:", currentRider.attributes?.occupationGroup, "Term:", currentRider.attributes?.paymentTerm);
+
             currentRider.fee = calculateProductFee({
                 product,
                 calculationType: product.calculationType || ProductCalculationType.FIXED,
@@ -210,8 +234,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 sumAssured: currentRider.sumAssured,
                 age,
                 gender: customer.gender,
-                term: currentRider.attributes?.paymentTerm || 10,
-                occupationGroup: currentRider.attributes?.occupationGroup || 1,
+                term: Number(currentRider.attributes?.paymentTerm) || 10,
+                occupationGroup: Number(currentRider.attributes?.occupationGroup) || 1,
                 htvkPlan: currentRider.attributes?.plan as HTVKPlan,
                 htvkPackage: currentRider.attributes?.package as HTVKPackage
             });
@@ -493,6 +517,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                     {formData.riders.map((rider, idx) => {
                                         const riderProdInfo = products.find(p => p.id === rider.productId);
                                         const isHealth = riderProdInfo?.calculationType === ProductCalculationType.HEALTH_CARE;
+                                        const isAccident = riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_OCCUPATION;
+                                        const needsTerm = riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_TERM || riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_AGE_GENDER;
 
                                         return (
                                             <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800/50 shadow-sm relative group">
@@ -515,7 +541,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                         <>
                                                             <div>
                                                                 <label className="label-text">Chương trình</label>
-                                                                <select className="input-field py-1.5 text-xs" value={rider.attributes?.plan || HTVKPlan.NANG_CAO} onChange={(e) => updateRider(idx, { attributes: { ...rider.attributes, plan: e.target.value } })}>
+                                                                <select className="input-field py-1.5 text-xs" value={rider.attributes?.plan || HTVKPlan.NANG_CAO} onChange={(e) => updateRider(idx, { attributes: { plan: e.target.value } })}>
                                                                     {Object.values(HTVKPlan).map(p => <option key={p} value={p}>{p}</option>)}
                                                                 </select>
                                                             </div>
@@ -523,7 +549,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                             {(rider.attributes?.plan === HTVKPlan.TOAN_DIEN || rider.attributes?.plan === HTVKPlan.HOAN_HAO) && (
                                                                 <div>
                                                                     <label className="label-text text-[10px] uppercase font-bold text-gray-400">Gói</label>
-                                                                    <select className="input-field text-sm py-1.5" value={rider.attributes?.package || HTVKPackage.GOI_1} onChange={(e) => updateRider(idx, { attributes: { ...rider.attributes, package: e.target.value } })}>
+                                                                    <select className="input-field text-sm py-1.5" value={rider.attributes?.package || HTVKPackage.GOI_1} onChange={(e) => updateRider(idx, { attributes: { package: e.target.value } })}>
                                                                         <option value={HTVKPackage.STANDARD}>Chuẩn</option>
                                                                         <option value={HTVKPackage.GOI_1}>Gói 1 (Có MT)</option>
                                                                         <option value={HTVKPackage.GOI_2}>Gói 2 (Không MT)</option>
@@ -535,6 +561,37 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                         <div>
                                                             <label className="label-text">Số tiền bảo hiểm</label>
                                                             <CurrencyInput className="input-field py-1.5 text-xs" value={rider.sumAssured} onChange={v => updateRider(idx, { sumAssured: v })} />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dynamic: Occupation Group for Accident */}
+                                                    {isAccident && (
+                                                        <div>
+                                                            <label className="label-text text-orange-600">Nhóm nghề (Tính phí)</label>
+                                                            <select 
+                                                                className="input-field py-1.5 text-xs bg-orange-50 dark:bg-orange-900/20"
+                                                                value={rider.attributes?.occupationGroup || 1} 
+                                                                onChange={(e) => updateRider(idx, { attributes: { occupationGroup: Number(e.target.value) } })}
+                                                            >
+                                                                <option value="1">Nhóm 1 (Hành chính)</option>
+                                                                <option value="2">Nhóm 2 (Đi lại, Quản lý)</option>
+                                                                <option value="3">Nhóm 3 (Lao động nhẹ)</option>
+                                                                <option value="4">Nhóm 4 (Lao động nặng/nguy hiểm)</option>
+                                                            </select>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dynamic: Term for Term-based products */}
+                                                    {needsTerm && (
+                                                        <div>
+                                                            <label className="label-text text-blue-600">Thời hạn (Năm)</label>
+                                                            <input 
+                                                                type="number" 
+                                                                className="input-field py-1.5 text-xs bg-blue-50 dark:bg-blue-900/20" 
+                                                                value={rider.attributes?.paymentTerm || 10} 
+                                                                onChange={e => updateRider(idx, { attributes: { paymentTerm: Number(e.target.value) } })}
+                                                                placeholder="VD: 10, 15..."
+                                                            />
                                                         </div>
                                                     )}
 
