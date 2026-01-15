@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, PersonalityType, RelationshipType } from '../types';
+import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, PersonalityType, RelationshipType, ContractStatus } from '../types';
 import { formatDateVN, CurrencyInput, SearchableCustomerSelect } from '../components/Shared';
 import { uploadFile } from '../services/storage';
 
@@ -37,6 +37,60 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
     const [newClaim, setNewClaim] = useState<Partial<ClaimRecord>>({
         benefitType: 'Nằm viện', amountRequest: 0, status: ClaimStatus.PENDING, dateSubmitted: new Date().toISOString().split('T')[0]
     });
+
+    // --- UNIFIED TIMELINE LOGIC (Auto-generated events) ---
+    const virtualTimeline = useMemo(() => {
+        if (!customer) return [];
+        
+        let events: TimelineItem[] = [];
+
+        // 1. Manual Notes (Ghi chú thủ công)
+        if (customer.timeline && customer.timeline.length > 0) {
+            events = [...customer.timeline];
+        }
+
+        // 2. Auto-Events from Contracts (Hợp đồng)
+        customerContracts.forEach(c => {
+            // Event: Tham gia hợp đồng (Ngày hiệu lực)
+            events.push({
+                id: `contract-start-${c.id}`,
+                date: c.effectiveDate, // e.g. 2023-01-01
+                type: InteractionType.CONTRACT,
+                title: 'Tham gia Hợp đồng',
+                content: `Ký HĐ số ${c.contractNumber}\nSản phẩm: ${c.mainProduct.productName}\nPhí: ${c.totalFee.toLocaleString()} đ/năm`,
+                result: 'Đã phát hành'
+            });
+
+            // Event: Cảnh báo Mất hiệu lực (Nếu có)
+            if (c.status === ContractStatus.LAPSED) {
+                events.push({
+                    id: `contract-lapsed-${c.id}`,
+                    date: c.nextPaymentDate, // Giả định ngày đóng phí là ngày mất hiệu lực
+                    type: InteractionType.SYSTEM,
+                    title: 'Hợp đồng Mất hiệu lực',
+                    content: `HĐ số ${c.contractNumber} đã quá hạn đóng phí và mất hiệu lực. Cần liên hệ khôi phục ngay.`,
+                    result: 'Cảnh báo'
+                });
+            }
+        });
+
+        // 3. Auto-Events from Claims (Bồi thường)
+        if (customer.claims) {
+            customer.claims.forEach(cl => {
+                events.push({
+                    id: `claim-event-${cl.id}`,
+                    date: cl.dateSubmitted,
+                    type: InteractionType.CLAIM,
+                    title: `Nộp yêu cầu Bồi thường (Claim)`,
+                    content: `Quyền lợi: ${cl.benefitType}\nSố tiền YC: ${cl.amountRequest.toLocaleString()} đ`,
+                    result: cl.status
+                });
+            });
+        }
+
+        // Sort by Date Descending (Mới nhất lên đầu)
+        return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [customer, customerContracts]);
 
     if (!customer) return <div className="p-10 text-center">Không tìm thấy khách hàng</div>;
 
@@ -79,17 +133,11 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
             documents: []
         };
 
+        // Note: We don't manually add to timeline here anymore because the 'virtualTimeline' 
+        // will automatically pick up the new Claim record and display it.
         const updatedCustomer = {
             ...customer,
-            claims: [item, ...(customer.claims || [])],
-            timeline: [{
-                id: `tl_${Date.now()}`,
-                date: new Date().toISOString(),
-                type: InteractionType.CLAIM,
-                title: 'Nộp yêu cầu Bồi thường',
-                content: `Yêu cầu chi trả ${item.amountRequest.toLocaleString()}đ cho quyền lợi ${item.benefitType}`,
-                result: 'Đang xử lý'
-            }, ...(customer.timeline || [])]
+            claims: [item, ...(customer.claims || [])]
         };
 
         await onUpdateCustomer(updatedCustomer);
@@ -126,9 +174,10 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         switch(type) {
             case InteractionType.CALL: return 'fa-phone-alt bg-blue-100 text-blue-600';
             case InteractionType.MEETING: return 'fa-users bg-purple-100 text-purple-600';
-            case InteractionType.CLAIM: return 'fa-heartbeat bg-red-100 text-red-600';
-            case InteractionType.CONTRACT: return 'fa-file-signature bg-green-100 text-green-600';
+            case InteractionType.CLAIM: return 'fa-heartbeat bg-red-100 text-red-600 border-red-200';
+            case InteractionType.CONTRACT: return 'fa-file-signature bg-green-100 text-green-600 border-green-200';
             case InteractionType.ZALO: return 'fa-comment-dots bg-blue-50 text-blue-500';
+            case InteractionType.SYSTEM: return 'fa-exclamation-triangle bg-orange-100 text-orange-600';
             default: return 'fa-sticky-note bg-gray-100 text-gray-500';
         }
     };
@@ -206,7 +255,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                             {/* Add Interaction Input */}
                             <div className="mb-8 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                                 <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
-                                    {Object.values(InteractionType).map(t => (
+                                    {Object.values(InteractionType).filter(t => t !== InteractionType.SYSTEM).map(t => (
                                         <button 
                                             key={t}
                                             onClick={() => setNewInteraction({...newInteraction, type: t})}
@@ -230,23 +279,32 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                 </div>
                             </div>
 
-                            {/* Timeline List */}
+                            {/* Timeline List (VIRTUAL TIMELINE) */}
                             <div className="space-y-0 relative">
                                 <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                                {customer.timeline && customer.timeline.length > 0 ? (
-                                    customer.timeline.map((item, idx) => (
+                                {virtualTimeline.length > 0 ? (
+                                    virtualTimeline.map((item, idx) => (
                                         <div key={idx} className="relative pl-16 pb-8 last:pb-0 group">
                                             <div className={`absolute left-2 w-9 h-9 rounded-full border-4 border-white dark:border-pru-card flex items-center justify-center shadow-sm z-10 ${getTimelineIcon(item.type)}`}>
-                                                <i className={`fas ${item.type === InteractionType.CALL ? 'fa-phone' : item.type === InteractionType.CLAIM ? 'fa-heartbeat' : 'fa-sticky-note'} text-xs`}></i>
+                                                <i className={`fas ${item.type === InteractionType.CALL ? 'fa-phone' : item.type === InteractionType.CLAIM ? 'fa-heartbeat' : item.type === InteractionType.CONTRACT ? 'fa-file-signature' : item.type === InteractionType.SYSTEM ? 'fa-exclamation' : 'fa-sticky-note'} text-xs`}></i>
                                             </div>
                                             <div className="bg-gray-50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:shadow-md transition">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">
-                                                        {new Date(item.date).toLocaleString('vi-VN')} • {item.type}
+                                                        {new Date(item.date).toLocaleString('vi-VN').split(',')[0]} • {item.type}
                                                     </span>
-                                                    {item.result && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold">{item.result}</span>}
+                                                    {item.result && (
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                                            item.type === InteractionType.SYSTEM ? 'bg-red-100 text-red-700' :
+                                                            item.type === InteractionType.CONTRACT ? 'bg-green-100 text-green-700' :
+                                                            'bg-blue-100 text-blue-700'
+                                                        }`}>
+                                                            {item.result}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <p className="text-gray-800 dark:text-gray-200 text-sm whitespace-pre-wrap">{item.content}</p>
+                                                <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">{item.title}</h4>
+                                                <p className="text-gray-600 dark:text-gray-400 text-sm whitespace-pre-wrap leading-relaxed">{item.content}</p>
                                             </div>
                                         </div>
                                     ))
