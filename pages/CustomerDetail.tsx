@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument } from '../types';
-import { formatDateVN, CurrencyInput, ConfirmModal } from '../components/Shared';
+import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, PersonalityType, RelationshipType } from '../types';
+import { formatDateVN, CurrencyInput, SearchableCustomerSelect } from '../components/Shared';
 import { uploadFile } from '../services/storage';
 
 interface CustomerDetailProps {
@@ -24,13 +24,13 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
     const totalClaims = (customer?.claims || []).filter(c => c.status === ClaimStatus.APPROVED).reduce((sum, c) => sum + c.amountPaid, 0);
 
     // State
-    const [activeTab, setActiveTab] = useState<'timeline' | 'claims' | 'contracts' | 'docs' | 'info'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'contracts' | 'claims' | 'docs' | 'info'>('timeline');
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     
     // New Timeline State
     const [newInteraction, setNewInteraction] = useState<{type: InteractionType, content: string, title: string, date: string}>({
         type: InteractionType.NOTE, content: '', title: '', date: new Date().toISOString().split('T')[0]
     });
-    const [isAddingTimeline, setIsAddingTimeline] = useState(false);
 
     // New Claim State
     const [isAddingClaim, setIsAddingClaim] = useState(false);
@@ -47,7 +47,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         
         const newItem: TimelineItem = {
             id: Date.now().toString(),
-            date: new Date().toISOString(), // Use current exact time for sorting
+            date: new Date().toISOString(),
             type: newInteraction.type,
             title: newInteraction.title || newInteraction.type,
             content: newInteraction.content,
@@ -57,12 +57,10 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         const updatedCustomer = {
             ...customer,
             timeline: [newItem, ...(customer.timeline || [])],
-            // Sync legacy field
             interactionHistory: [`${formatDateVN(newItem.date)}: ${newItem.title} - ${newItem.content}`, ...(customer.interactionHistory || [])]
         };
 
         await onUpdateCustomer(updatedCustomer);
-        setIsAddingTimeline(false);
         setNewInteraction({type: InteractionType.NOTE, content: '', title: '', date: new Date().toISOString().split('T')[0]});
     };
 
@@ -75,7 +73,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
             contractId: newClaim.contractId || '',
             benefitType: newClaim.benefitType || '',
             amountRequest: newClaim.amountRequest || 0,
-            amountPaid: 0, // Default 0 until approved
+            amountPaid: 0, 
             status: ClaimStatus.PENDING,
             notes: newClaim.notes || '',
             documents: []
@@ -84,7 +82,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         const updatedCustomer = {
             ...customer,
             claims: [item, ...(customer.claims || [])],
-            // Add a timeline event for this claim
             timeline: [{
                 id: `tl_${Date.now()}`,
                 date: new Date().toISOString(),
@@ -125,7 +122,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         }
     };
 
-    // Helper for Timeline Icons
     const getTimelineIcon = (type: InteractionType) => {
         switch(type) {
             case InteractionType.CALL: return 'fa-phone-alt bg-blue-100 text-blue-600';
@@ -158,16 +154,23 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                         </div>
                     </div>
 
-                    {/* Financial Snapshot */}
-                    <div className="flex gap-4">
-                        <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 text-right min-w-[140px]">
-                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Tổng phí đã đóng</p>
-                            <p className="text-xl font-black text-gray-800 dark:text-gray-100">{totalPremiums.toLocaleString()} <span className="text-xs font-normal">đ</span></p>
+                    <div className="flex items-center gap-4">
+                        <div className="hidden md:flex gap-4">
+                            <div className="text-right">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Tổng phí đóng</p>
+                                <p className="text-lg font-black text-gray-800 dark:text-gray-100">{totalPremiums.toLocaleString()} đ</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">Quyền lợi đã nhận</p>
+                                <p className="text-lg font-black text-green-700 dark:text-green-300">{totalClaims.toLocaleString()} đ</p>
+                            </div>
                         </div>
-                        <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-xl border border-green-100 dark:border-green-800 text-right min-w-[140px]">
-                            <p className="text-xs text-green-600 dark:text-green-400 uppercase font-bold">Quyền lợi đã nhận</p>
-                            <p className="text-xl font-black text-green-700 dark:text-green-300">{totalClaims.toLocaleString()} <span className="text-xs font-normal">đ</span></p>
-                        </div>
+                        <button 
+                            onClick={() => setIsEditModalOpen(true)}
+                            className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-xl text-sm font-bold flex items-center transition"
+                        >
+                            <i className="fas fa-edit mr-2"></i> Chỉnh sửa
+                        </button>
                     </div>
                 </div>
             </div>
@@ -179,7 +182,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                     {id: 'contracts', label: 'Hợp đồng', icon: 'fa-file-contract'},
                     {id: 'claims', label: 'Bồi thường (Claims)', icon: 'fa-heartbeat'},
                     {id: 'docs', label: 'Hồ sơ & Tài liệu', icon: 'fa-folder-open'},
-                    {id: 'info', label: 'Thông tin cá nhân', icon: 'fa-user'}
+                    {id: 'info', label: 'Thông tin 360', icon: 'fa-user'}
                 ].map(tab => (
                     <button 
                         key={tab.id} 
@@ -410,41 +413,56 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                         </div>
                     )}
 
-                    {/* TAB: INFO (Quick Read) */}
+                    {/* TAB: INFO (Full Details) */}
                     {activeTab === 'info' && (
-                        <div className="bg-white dark:bg-pru-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 space-y-4">
-                            <h3 className="font-bold text-gray-800 dark:text-gray-100">Thông tin chi tiết</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                                    <span className="text-gray-500">Điện thoại</span>
-                                    <span className="font-medium text-gray-800 dark:text-gray-200">{customer.phone}</span>
-                                </div>
-                                <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                                    <span className="text-gray-500">Nghề nghiệp</span>
-                                    <span className="font-medium text-gray-800 dark:text-gray-200">{customer.job || customer.occupation}</span>
-                                </div>
-                                <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                                    <span className="text-gray-500">Tình trạng hôn nhân</span>
-                                    <span className="font-medium text-gray-800 dark:text-gray-200">{customer.maritalStatus}</span>
-                                </div>
-                                <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                                    <span className="text-gray-500">Vai trò tài chính</span>
-                                    <span className="font-medium text-gray-800 dark:text-gray-200">{customer.financialRole}</span>
-                                </div>
-                                <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 pb-2 md:col-span-2">
-                                    <span className="text-gray-500">Địa chỉ / Công ty</span>
-                                    <span className="font-medium text-gray-800 dark:text-gray-200">{customer.companyAddress}</span>
+                        <div className="bg-white dark:bg-pru-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 space-y-6">
+                            
+                            {/* Personal */}
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 flex items-center">
+                                    <i className="fas fa-id-card mr-2 text-pru-red"></i>Thông tin cá nhân
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div className="flex justify-between"><span className="text-gray-500">Điện thoại</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.phone}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">CCCD/CMND</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.idCard || '--'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Ngày sinh</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatDateVN(customer.dob)}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Giới tính</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.gender}</span></div>
+                                    <div className="flex justify-between md:col-span-2"><span className="text-gray-500 w-32">Địa chỉ</span><span className="font-medium text-gray-800 dark:text-gray-200 text-right">{customer.companyAddress}</span></div>
                                 </div>
                             </div>
-                            
-                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                                <h4 className="font-bold text-gray-700 dark:text-gray-300 mb-2">Sức khỏe & Ghi chú</h4>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                                    <span className="font-bold">Tiền sử:</span> {customer.health?.medicalHistory || 'Chưa ghi nhận'}
-                                </p>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    <span className="font-bold">Chỉ số:</span> {customer.health?.height}cm - {customer.health?.weight}kg
-                                </p>
+
+                            {/* Demographics & Financial */}
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 flex items-center">
+                                    <i className="fas fa-chart-pie mr-2 text-blue-500"></i>Nhân khẩu & Tài chính
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div className="flex justify-between"><span className="text-gray-500">Nghề nghiệp</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.occupation}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Hôn nhân</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.maritalStatus}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Vai trò tài chính</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.financialRole}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Người phụ thuộc</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.dependents} người</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Thu nhập (Tháng)</span><span className="font-bold text-green-600">{customer.analysis?.incomeMonthly?.toLocaleString()} đ</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Chi tiêu (Tháng)</span><span className="font-bold text-orange-600">{customer.analysis?.monthlyExpenses?.toLocaleString()} đ</span></div>
+                                </div>
+                            </div>
+
+                            {/* Health */}
+                            <div className="space-y-4">
+                                <h3 className="font-bold text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 flex items-center">
+                                    <i className="fas fa-heartbeat mr-2 text-red-500"></i>Sức khỏe & Lối sống
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div className="flex justify-between"><span className="text-gray-500">Chiều cao</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.health?.height} cm</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-500">Cân nặng</span><span className="font-medium text-gray-800 dark:text-gray-200">{customer.health?.weight} kg</span></div>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg text-sm">
+                                    <p className="text-gray-500 text-xs uppercase font-bold mb-1">Tiền sử bệnh</p>
+                                    <p className="text-gray-800 dark:text-gray-200 font-medium">{customer.health?.medicalHistory || 'Chưa ghi nhận'}</p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg text-sm">
+                                    <p className="text-gray-500 text-xs uppercase font-bold mb-1">Thói quen sinh hoạt</p>
+                                    <p className="text-gray-800 dark:text-gray-200 font-medium">{customer.health?.habits || 'Chưa ghi nhận'}</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -495,12 +513,206 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                     </div>
                 </div>
             </div>
+
+            {/* EDIT PROFILE MODAL */}
+            {isEditModalOpen && (
+                <EditCustomerModal 
+                    customer={customer} 
+                    allCustomers={customers}
+                    onSave={async (updated) => {
+                        await onUpdateCustomer(updated);
+                        setIsEditModalOpen(false);
+                    }}
+                    onClose={() => setIsEditModalOpen(false)}
+                />
+            )}
             
             <style>{`
                 .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius: 0.5rem; outline: none; }
                 .dark .input-field { background-color: #111827; border-color: #374151; color: #f3f4f6; }
                 .animate-fade-in { animation: fadeIn 0.3s ease-in; }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            `}</style>
+        </div>
+    );
+};
+
+const EditCustomerModal: React.FC<{
+    customer: Customer;
+    allCustomers: Customer[];
+    onSave: (c: Customer) => void;
+    onClose: () => void;
+}> = ({ customer, allCustomers, onSave, onClose }) => {
+    const [data, setData] = useState<Customer>(customer);
+    const [activeSection, setActiveSection] = useState<'personal' | 'health' | 'finance' | 'relations'>('personal');
+
+    const handleSave = () => {
+        onSave(data);
+        alert("Đã cập nhật hồ sơ khách hàng thành công!");
+    };
+
+    // Helper for adding relationship
+    const addRelationship = () => {
+        setData(prev => ({
+            ...prev,
+            relationships: [...(prev.relationships || []), { relatedCustomerId: '', relationship: RelationshipType.OTHER }]
+        }));
+    };
+
+    const updateRelationship = (index: number, field: string, value: string) => {
+        const newRels = [...(data.relationships || [])];
+        newRels[index] = { ...newRels[index], [field]: value };
+        setData(prev => ({ ...prev, relationships: newRels }));
+    };
+
+    const removeRelationship = (index: number) => {
+        const newRels = [...(data.relationships || [])];
+        newRels.splice(index, 1);
+        setData(prev => ({ ...prev, relationships: newRels }));
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 animate-fade-in backdrop-blur-sm">
+            <div className="bg-white dark:bg-pru-card rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700">
+                {/* Header */}
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">Chỉnh sửa Hồ sơ Khách hàng</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i className="fas fa-times text-xl"></i></button>
+                </div>
+
+                <div className="flex flex-1 overflow-hidden">
+                    {/* Sidebar Tabs */}
+                    <div className="w-1/4 bg-gray-50 dark:bg-gray-900 border-r border-gray-100 dark:border-gray-700 p-2 overflow-y-auto">
+                        <button onClick={() => setActiveSection('personal')} className={`w-full text-left p-3 rounded-lg text-sm font-bold mb-1 transition ${activeSection === 'personal' ? 'bg-white dark:bg-gray-800 text-pru-red shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                            <i className="fas fa-id-card mr-2 w-5"></i> Cá nhân & Liên hệ
+                        </button>
+                        <button onClick={() => setActiveSection('finance')} className={`w-full text-left p-3 rounded-lg text-sm font-bold mb-1 transition ${activeSection === 'finance' ? 'bg-white dark:bg-gray-800 text-pru-red shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                            <i className="fas fa-chart-pie mr-2 w-5"></i> Tài chính & Phân tích
+                        </button>
+                        <button onClick={() => setActiveSection('health')} className={`w-full text-left p-3 rounded-lg text-sm font-bold mb-1 transition ${activeSection === 'health' ? 'bg-white dark:bg-gray-800 text-pru-red shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                            <i className="fas fa-heartbeat mr-2 w-5"></i> Sức khỏe & Lối sống
+                        </button>
+                        <button onClick={() => setActiveSection('relations')} className={`w-full text-left p-3 rounded-lg text-sm font-bold mb-1 transition ${activeSection === 'relations' ? 'bg-white dark:bg-gray-800 text-pru-red shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                            <i className="fas fa-users mr-2 w-5"></i> Gia đình & Quan hệ
+                        </button>
+                    </div>
+
+                    {/* Content Form */}
+                    <div className="flex-1 p-6 overflow-y-auto bg-white dark:bg-pru-card">
+                        
+                        {activeSection === 'personal' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">Định danh & Liên hệ</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="label-text">Họ và tên</label><input className="input-field" value={data.fullName} onChange={e => setData({...data, fullName: e.target.value})} /></div>
+                                    <div><label className="label-text">Số điện thoại</label><input className="input-field" value={data.phone} onChange={e => setData({...data, phone: e.target.value})} /></div>
+                                    <div><label className="label-text">Ngày sinh</label><input type="date" className="input-field" value={data.dob} onChange={e => setData({...data, dob: e.target.value})} /></div>
+                                    <div><label className="label-text">Giới tính</label><select className="input-field" value={data.gender} onChange={(e: any) => setData({...data, gender: e.target.value})}>{Object.values(Gender).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">CCCD / CMND</label><input className="input-field" value={data.idCard} onChange={e => setData({...data, idCard: e.target.value})} /></div>
+                                    <div><label className="label-text">Địa chỉ / Công ty</label><input className="input-field" value={data.companyAddress} onChange={e => setData({...data, companyAddress: e.target.value})} /></div>
+                                </div>
+                                
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 mt-6">Nhân khẩu học</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="label-text">Nghề nghiệp</label><input className="input-field" value={data.occupation} onChange={e => setData({...data, occupation: e.target.value})} /></div>
+                                    <div><label className="label-text">Tình trạng hôn nhân</label><select className="input-field" value={data.maritalStatus} onChange={(e: any) => setData({...data, maritalStatus: e.target.value})}>{Object.values(MaritalStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">Số người phụ thuộc</label><input type="number" className="input-field" value={data.dependents} onChange={e => setData({...data, dependents: Number(e.target.value)})} /></div>
+                                    <div><label className="label-text">Vai trò tài chính</label><select className="input-field" value={data.financialRole} onChange={(e: any) => setData({...data, financialRole: e.target.value})}>{Object.values(FinancialRole).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeSection === 'finance' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">Tình hình tài chính</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="label-text">Thu nhập hàng tháng</label><CurrencyInput className="input-field font-bold text-green-600" value={data.analysis.incomeMonthly} onChange={v => setData({...data, analysis: {...data.analysis, incomeMonthly: v}})} /></div>
+                                    <div><label className="label-text">Chi tiêu hàng tháng</label><CurrencyInput className="input-field font-bold text-orange-600" value={data.analysis.monthlyExpenses} onChange={v => setData({...data, analysis: {...data.analysis, monthlyExpenses: v}})} /></div>
+                                    <div><label className="label-text">Xu hướng thu nhập</label><select className="input-field" value={data.analysis.incomeTrend} onChange={(e: any) => setData({...data, analysis: {...data.analysis, incomeTrend: e.target.value}})}>{Object.values(IncomeTrend).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">Thu nhập dự kiến (3 năm tới)</label><CurrencyInput className="input-field" value={data.analysis.projectedIncome3Years} onChange={v => setData({...data, analysis: {...data.analysis, projectedIncome3Years: v}})} /></div>
+                                </div>
+
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 mt-6">Phân tích tâm lý</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="label-text">Tính cách (DISC)</label><select className="input-field" value={data.analysis.personality} onChange={(e: any) => setData({...data, analysis: {...data.analysis, personality: e.target.value}})}>{Object.values(PersonalityType).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div><label className="label-text">Khẩu vị rủi ro</label><select className="input-field" value={data.analysis.riskTolerance} onChange={(e: any) => setData({...data, analysis: {...data.analysis, riskTolerance: e.target.value}})}>{Object.values(RiskTolerance).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                    <div className="col-span-2"><label className="label-text">Mối lo lớn nhất</label><input className="input-field" value={data.analysis.biggestWorry} onChange={e => setData({...data, analysis: {...data.analysis, biggestWorry: e.target.value}})} placeholder="VD: Bệnh hiểm nghèo, thất nghiệp..." /></div>
+                                    <div className="col-span-2"><label className="label-text">Kế hoạch tương lai</label><input className="input-field" value={data.analysis.futurePlans} onChange={e => setData({...data, analysis: {...data.analysis, futurePlans: e.target.value}})} placeholder="VD: Cho con du học, mua nhà..." /></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeSection === 'health' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2">Chỉ số cơ thể</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="label-text">Chiều cao (cm)</label><input type="number" className="input-field" value={data.health.height} onChange={e => setData({...data, health: {...data.health, height: Number(e.target.value)}})} /></div>
+                                    <div><label className="label-text">Cân nặng (kg)</label><input type="number" className="input-field" value={data.health.weight} onChange={e => setData({...data, health: {...data.health, weight: Number(e.target.value)}})} /></div>
+                                </div>
+
+                                <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase mb-2 mt-6">Thông tin y khoa</h4>
+                                <div>
+                                    <label className="label-text">Tiền sử bệnh / Phẫu thuật</label>
+                                    <textarea className="input-field h-24" value={data.health.medicalHistory} onChange={e => setData({...data, health: {...data.health, medicalHistory: e.target.value}})} placeholder="Ghi rõ năm mắc bệnh, điều trị tại đâu..." />
+                                </div>
+                                <div>
+                                    <label className="label-text">Thói quen sinh hoạt (Rượu bia, thuốc lá)</label>
+                                    <textarea className="input-field h-20" value={data.health.habits} onChange={e => setData({...data, health: {...data.health, habits: e.target.value}})} placeholder="VD: Hút thuốc 1 gói/ngày..." />
+                                </div>
+                            </div>
+                        )}
+
+                        {activeSection === 'relations' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h4 className="text-base font-bold text-gray-700 dark:text-gray-300 uppercase">Danh sách người thân</h4>
+                                    <button onClick={addRelationship} className="text-xs bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-200">+ Thêm người</button>
+                                </div>
+                                
+                                <div className="space-y-3">
+                                    {data.relationships?.map((rel, idx) => (
+                                        <div key={idx} className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 flex gap-3 items-center">
+                                            <div className="flex-1">
+                                                <label className="label-text text-[10px]">Người thân (Chọn từ DS)</label>
+                                                <SearchableCustomerSelect 
+                                                    customers={allCustomers} 
+                                                    value={allCustomers.find(c => c.id === rel.relatedCustomerId)?.fullName || ''}
+                                                    onChange={(c) => updateRelationship(idx, 'relatedCustomerId', c.id)}
+                                                    className="text-sm"
+                                                />
+                                            </div>
+                                            <div className="w-1/3">
+                                                <label className="label-text text-[10px]">Mối quan hệ</label>
+                                                <select className="input-field py-2 text-sm" value={rel.relationship} onChange={(e) => updateRelationship(idx, 'relationship', e.target.value)}>
+                                                    {Object.values(RelationshipType).map(v => <option key={v} value={v}>{v}</option>)}
+                                                </select>
+                                            </div>
+                                            <button onClick={() => removeRelationship(idx)} className="mt-5 text-red-500 hover:bg-red-50 p-2 rounded"><i className="fas fa-trash"></i></button>
+                                        </div>
+                                    ))}
+                                    {(!data.relationships || data.relationships.length === 0) && (
+                                        <p className="text-center text-gray-400 italic text-sm">Chưa có thông tin gia đình.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy bỏ</button>
+                    <button onClick={handleSave} className="px-6 py-2 bg-pru-red text-white font-bold rounded-lg hover:bg-red-700 shadow-md">Lưu Hồ Sơ</button>
+                </div>
+            </div>
+            
+            <style>{`
+                .label-text { display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem; }
+                .dark .label-text { color: #9ca3af; }
+                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.6rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; }
+                .dark .input-field { background-color: #1f2937; border-color: #374151; color: #f3f4f6; }
+                .input-field:focus { border-color: #ed1b2e; ring: 1px solid #ed1b2e; }
             `}</style>
         </div>
     );
