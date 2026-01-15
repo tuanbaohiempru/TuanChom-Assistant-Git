@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Contract, Customer, Product, ProductType, ContractStatus, PaymentFrequency, ProductCalculationType, ContractProduct, Gender, ProductStatus } from '../types';
 import { SearchableCustomerSelect, CurrencyInput, ConfirmModal, formatDateVN } from '../components/Shared';
@@ -224,9 +225,6 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         if (product && customer) {
             const age = calculateAge(customer.dob);
             
-            // Log logic for debugging
-            // console.log("Calculating Rider:", product.name, "Occup:", currentRider.attributes?.occupationGroup, "Term:", currentRider.attributes?.paymentTerm);
-
             currentRider.fee = calculateProductFee({
                 product,
                 calculationType: product.calculationType || ProductCalculationType.FIXED,
@@ -409,7 +407,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                     <div key={idx} className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs">
                                                         <div>
                                                             <p className="font-medium text-gray-800 dark:text-gray-200 line-clamp-1" title={r.productName}>{r.productName}</p>
-                                                            <p className="text-gray-500 dark:text-gray-400 text-[10px]">NĐBH: {r.insuredName}</p>
+                                                            <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 text-[10px]">
+                                                                <span>NĐBH: {r.insuredName}</span>
+                                                                {r.attributes?.occupationGroup && <span className="bg-orange-100 text-orange-700 px-1 rounded">Nhóm {r.attributes.occupationGroup}</span>}
+                                                                {r.attributes?.paymentTerm && <span className="bg-blue-100 text-blue-700 px-1 rounded">{r.attributes.paymentTerm} năm</span>}
+                                                            </div>
                                                         </div>
                                                         <span className="font-bold text-gray-600 dark:text-gray-300">{r.fee.toLocaleString()} đ</span>
                                                     </div>
@@ -519,6 +521,10 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                         const isHealth = riderProdInfo?.calculationType === ProductCalculationType.HEALTH_CARE;
                                         const isAccident = riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_OCCUPATION;
                                         const needsTerm = riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_TERM || riderProdInfo?.calculationType === ProductCalculationType.RATE_PER_1000_AGE_GENDER;
+                                        
+                                        // Find Customer for Hint
+                                        const riderCustomer = customers.find(c => c.fullName === rider.insuredName);
+                                        const customerJob = riderCustomer?.job || riderCustomer?.occupation || 'Chưa có thông tin';
 
                                         return (
                                             <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-orange-200 dark:border-orange-800/50 shadow-sm relative group">
@@ -567,7 +573,12 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                                     {/* Dynamic: Occupation Group for Accident */}
                                                     {isAccident && (
                                                         <div>
-                                                            <label className="label-text text-orange-600">Nhóm nghề (Tính phí)</label>
+                                                            <label className="label-text text-orange-600 flex items-center justify-between">
+                                                                Nhóm nghề (Tính phí)
+                                                                <span className="text-[9px] text-gray-400 font-normal ml-1 bg-gray-100 px-1 rounded">
+                                                                    Nghề: {customerJob}
+                                                                </span>
+                                                            </label>
                                                             <select 
                                                                 className="input-field py-1.5 text-xs bg-orange-50 dark:bg-orange-900/20"
                                                                 value={rider.attributes?.occupationGroup || 1} 
