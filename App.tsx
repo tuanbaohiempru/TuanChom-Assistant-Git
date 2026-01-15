@@ -16,7 +16,6 @@ import AdvisoryPage from './pages/Advisory';
 import MarketingPage from './pages/Marketing';
 import ProductAdvisoryPage from './pages/ProductAdvisory';
 import LoginPage from './pages/Login';
-import BusinessCard from './pages/BusinessCard'; // Assuming you have this
 
 import { AppState, Customer, Contract, Product, Appointment, MessageTemplate, AgentProfile, Illustration, ContractStatus, PaymentFrequency } from './types';
 import { subscribeToCollection, addData, updateData, deleteData, COLLECTIONS } from './services/db';
@@ -242,7 +241,6 @@ const App: React.FC = () => {
         <Router>
             {!user ? (
                 <Routes>
-                    <Route path="/business-card" element={<BusinessCard profile={state.agentProfile} />} />
                     <Route path="*" element={<LoginPage />} />
                 </Routes>
             ) : (
@@ -283,7 +281,6 @@ const App: React.FC = () => {
                             <Route path="/templates" element={<MessageTemplatesPage templates={state.messageTemplates} customers={state.customers} contracts={state.contracts} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} />} />
                             <Route path="/settings" element={<SettingsPage profile={state.agentProfile} onSave={saveProfile} isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />} />
                             <Route path="/advisory/:id" element={<AdvisoryPage customers={state.customers} contracts={state.contracts} agentProfile={state.agentProfile} onUpdateCustomer={updateCustomer} />} />
-                            <Route path="/business-card" element={<BusinessCard profile={state.agentProfile} />} />
                             <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                     </Layout>
