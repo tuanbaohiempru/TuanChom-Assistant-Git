@@ -94,9 +94,16 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         actionType?: 'payment' | 'birthday' | 'care'; // Context for message generation
         data?: any; // Extra data like contract info
     }[] = [];
+    
+    // Normalize Dates
     const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    const next10Days = new Date(today);
+    next10Days.setDate(today.getDate() + 10);
+    next10Days.setHours(23,59,59,999);
 
-    // A. Urgent: Lapsed Contracts & Overdue Payments
+    // A. Urgent & Payments: Lapsed Contracts, Overdue & Upcoming Payments
     contracts.forEach(c => {
         const customer = customers.find(cus => cus.id === c.customerId);
         if (c.status === ContractStatus.LAPSED) {
@@ -110,12 +117,26 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
             });
         } else if (c.status === ContractStatus.ACTIVE) {
             const dueDate = new Date(c.nextPaymentDate);
+            // Overdue (Urgent)
             if (dueDate < today) {
                 tasks.push({
                     id: `overdue-${c.id}`, type: 'urgent',
                     title: `Quá hạn đóng phí HĐ ${c.contractNumber}`,
                     subtitle: `Trễ hạn từ ngày ${formatDateVN(c.nextPaymentDate)}`,
                     icon: 'fa-clock', color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400',
+                    customer: customer,
+                    actionType: 'payment',
+                    data: c
+                });
+            } 
+            // Upcoming in 10 days (Normal)
+            else if (dueDate >= today && dueDate <= next10Days) {
+                 const diff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+                 tasks.push({
+                    id: `due-${c.id}`, type: 'normal',
+                    title: `Thu phí HĐ ${c.contractNumber}`,
+                    subtitle: `Hạn đóng: ${formatDateVN(c.nextPaymentDate)} (Còn ${diff} ngày)`,
+                    icon: 'fa-file-invoice-dollar', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400',
                     customer: customer,
                     actionType: 'payment',
                     data: c
@@ -137,32 +158,43 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         });
     });
 
-    // C. Normal: Today's Appointments & Birthdays (Next 3 days)
+    // C. Normal: Appointments (Next 10 days)
     appointments
-        .filter(a => a.date === today.toISOString().split('T')[0] && a.status === AppointmentStatus.UPCOMING)
+        .filter(a => {
+            const d = new Date(a.date);
+            return a.status === AppointmentStatus.UPCOMING && d >= today && d <= next10Days;
+        })
+        .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .forEach(a => {
             const customer = customers.find(c => c.id === a.customerId);
+            const isToday = a.date === today.toISOString().split('T')[0];
+            // If not today, show Date + Time
+            const timeDisplay = isToday ? a.time : `${formatDateVN(a.date)} ${a.time}`;
+            
             tasks.push({
                 id: `appt-${a.id}`, type: 'normal',
-                title: `${a.time}: ${a.type} - ${a.customerName}`,
+                title: `${timeDisplay}: ${a.type} - ${a.customerName}`,
                 subtitle: a.note || 'Không có ghi chú',
-                icon: 'fa-calendar-check', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400',
+                icon: 'fa-calendar-check', color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400',
                 customer: customer,
                 actionType: a.type === AppointmentType.BIRTHDAY ? 'birthday' : 'care'
             });
         });
 
+    // D. Birthdays (Next 10 days)
     customers.forEach(c => {
         const dob = new Date(c.dob);
         const nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
         if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
+        
         const diff = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 3600 * 24));
         
-        if (diff >= 0 && diff <= 3) {
+        if (diff >= 0 && diff <= 10) {
+             const bdayStr = formatDateVN(nextBday.toISOString().split('T')[0]).substring(0, 5); // dd/mm
              tasks.push({
                 id: `bday-${c.id}`, type: 'normal',
-                title: `Sinh nhật ${c.fullName} ${diff === 0 ? 'hôm nay' : `trong ${diff} ngày tới`}`,
-                subtitle: 'Gửi tin nhắn chúc mừng',
+                title: `Sinh nhật ${c.fullName} ${diff === 0 ? 'hôm nay' : `(${bdayStr})`}`,
+                subtitle: diff === 0 ? 'Gửi tin nhắn chúc mừng ngay!' : `Còn ${diff} ngày nữa`,
                 icon: 'fa-birthday-cake', color: 'text-pink-500 bg-pink-100 dark:bg-pink-900/20 dark:text-pink-400',
                 customer: c,
                 actionType: 'birthday'
@@ -257,7 +289,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         <div className="lg:col-span-2 bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col min-h-[500px] transition-colors">
             <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 pt-4">
                 <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500'}`}>
-                    <i className="fas fa-tasks mr-2"></i>Việc cần làm
+                    <i className="fas fa-tasks mr-2"></i>Việc cần làm (10 ngày tới)
                     {activeTab === 'tasks' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
                 </button>
                 <button onClick={() => setActiveTab('pipeline')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'pipeline' ? 'text-pru-red' : 'text-gray-500'}`}>
@@ -290,7 +322,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                                 <i className="fas fa-clipboard-check text-4xl mb-2 opacity-50"></i>
-                                <p>Tuyệt vời! Bạn đã hoàn thành mọi việc.</p>
+                                <p>Tuyệt vời! Bạn đã hoàn thành mọi việc trong 10 ngày tới.</p>
                             </div>
                         )}
                     </div>

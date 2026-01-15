@@ -100,8 +100,54 @@ const findRelevantContext = (query: string, state: AppState): string => {
     const lowerQuery = query.toLowerCase();
     let context = "";
     
-    // 1. Identify Customers mentioned in the query
-    // Search by Full Name or First Name (last word)
+    // --- 1. BIRTHDAY CALCULATION LOGIC (NEW) ---
+    // Trigger if query contains birthday keywords
+    if (lowerQuery.includes('sinh nhật') || lowerQuery.includes('birthday') || lowerQuery.includes('sn')) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const upcomingBirthdays = state.customers
+            .filter(c => c.dob) // Must have DOB
+            .map(c => {
+                const dob = new Date(c.dob);
+                // Calculate next birthday
+                let nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+                
+                // If birthday has passed this year, assume next year
+                if (nextBday < today) {
+                    nextBday.setFullYear(today.getFullYear() + 1);
+                }
+                
+                const diffTime = nextBday.getTime() - today.getTime();
+                const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                return {
+                    name: c.fullName,
+                    id: c.id,
+                    dobStr: `${dob.getDate()}/${dob.getMonth() + 1}`, // Format DD/MM
+                    birthYear: dob.getFullYear(),
+                    daysUntil: daysUntil
+                };
+            })
+            .sort((a, b) => a.daysUntil - b.daysUntil) // Sort: Nearest first
+            .slice(0, 10); // Take top 10
+
+        context += "\n--- SỰ KIỆN ĐẶC BIỆT: SINH NHẬT KHÁCH HÀNG (ĐÃ TÍNH TOÁN) ---\n";
+        context += "Hệ thống đã tính toán số ngày còn lại đến sinh nhật của các khách hàng gần nhất:\n";
+        
+        if (upcomingBirthdays.length > 0) {
+            upcomingBirthdays.forEach(item => {
+                const dayLabel = item.daysUntil === 0 ? "HÔM NAY" : `còn ${item.daysUntil} ngày nữa`;
+                context += `- ${item.name}: Sinh nhật ngày ${item.dobStr} (${dayLabel}).\n`;
+            });
+        } else {
+            context += "- Không tìm thấy dữ liệu ngày sinh hợp lệ.\n";
+        }
+        context += "--------------------------------------------------------------\n";
+    }
+
+    // --- 2. NAME MATCHING LOGIC (EXISTING) ---
+    // Identify Customers mentioned in the query by Name
     const matchedCustomers = state.customers.filter(c => {
         const fullName = c.fullName.toLowerCase();
         const firstName = fullName.split(' ').pop() || '';
@@ -207,7 +253,7 @@ export const chatWithData = async (
         knowledgeBase = "Hiện chưa có tài liệu sản phẩm nào được tải lên hệ thống. Hãy trả lời dựa trên kiến thức chung về bảo hiểm Prudential.";
     }
 
-    // 2. Get Specific Context (The Fix for "Chi Thanh")
+    // 2. Get Specific Context (The Fix for "Chi Thanh" & Birthdays)
     const specificContext = findRelevantContext(query, appState);
     const generalContext = prepareJsonContext(appState);
 
@@ -225,9 +271,9 @@ export const chatWithData = async (
     ${generalContext}
     
     QUY TẮC TRẢ LỜI:
-    1. **Ưu tiên dữ liệu cụ thể**: Nếu phần "DỮ LIỆU CỤ THỂ" có thông tin về khách hàng được hỏi (ví dụ: Chị Thanh), hãy dùng thông tin đó (tổng phí, danh sách hợp đồng, gia đình) để trả lời chính xác tuyệt đối. Đừng bịa đặt nếu dữ liệu đã có.
+    1. **Ưu tiên dữ liệu cụ thể**: Nếu phần "DỮ LIỆU CỤ THỂ" có thông tin về sinh nhật hoặc khách hàng được hỏi, hãy dùng thông tin đó để trả lời chính xác tuyệt đối. Đừng bịa đặt.
     2. **Trả lời về Sản phẩm**: Nếu câu hỏi về quyền lợi/điều khoản, hãy tra cứu trong "NGUỒN DỮ LIỆU SẢN PHẨM".
-    3. **Tính toán**: Nếu dữ liệu đã cung cấp con số Tổng phí, hãy dùng con số đó.
+    3. **Tính toán**: Nếu dữ liệu đã cung cấp con số Tổng phí hoặc Ngày sinh còn lại bao nhiêu ngày, hãy dùng con số đó.
     4. **Phong cách**: Ngắn gọn, chuyên nghiệp, xưng "em" hoặc "tôi".
     `;
 
