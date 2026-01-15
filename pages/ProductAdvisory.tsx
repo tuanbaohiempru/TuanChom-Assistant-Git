@@ -278,8 +278,9 @@ const ProductAdvisoryPage: React.FC<ProductAdvisoryPageProps> = ({ customers, pr
                         </div>
 
                         {/* 2. MAIN PRODUCT */}
-                        <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                        {/* REMOVED overflow-hidden to allow dropdowns (if any) to show properly */}
+                        <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 relative">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 rounded-l-xl"></div>
                             <h3 className="text-xs font-bold text-blue-600 uppercase mb-3 flex items-center ml-2">
                                 <span className="w-5 h-5 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mr-2">2</span>
                                 Sản phẩm chính
@@ -321,8 +322,9 @@ const ProductAdvisoryPage: React.FC<ProductAdvisoryPageProps> = ({ customers, pr
                         </div>
 
                         {/* 3. RIDERS */}
-                        <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                        {/* REMOVED overflow-hidden to fix dropdown clipping issue */}
+                        <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 relative">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500 rounded-l-xl"></div>
                             <div className="flex justify-between items-center mb-3 ml-2">
                                 <h3 className="text-xs font-bold text-orange-600 uppercase flex items-center">
                                     <span className="w-5 h-5 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center mr-2">3</span>
