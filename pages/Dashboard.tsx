@@ -12,7 +12,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ state }) => {
   const { customers, contracts, appointments, agentProfile } = state;
-  const [activeTab, setActiveTab] = useState<'tasks' | 'pipeline'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'pending'>('tasks');
   
   // Action Modal State
   const [actionModal, setActionModal] = useState<{isOpen: boolean, type: 'call' | 'zalo', customer: Customer | null, content?: string}>({
@@ -81,7 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
     return { actual, targets };
   }, [contracts, agentProfile]);
 
-  // --- 2. SMART TASKS (ACTION CENTER) ---
+  // --- 2. SMART TASKS (ACTION CENTER - Next 10 Days) ---
   const smartTasks = useMemo(() => {
     const tasks: { 
         id: string; 
@@ -207,6 +207,21 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
 
   }, [customers, contracts, appointments]);
 
+  // --- 2.5 PENDING APPOINTMENTS (ALL Unconfirmed) ---
+  const pendingAppointments = useMemo(() => {
+      const now = new Date();
+      now.setHours(0,0,0,0);
+
+      return appointments
+          .filter(a => a.status === AppointmentStatus.UPCOMING)
+          .sort((a, b) => {
+              // Sort by Date ASC (Oldest first for overdue)
+              const dateA = new Date(`${a.date}T${a.time}`);
+              const dateB = new Date(`${b.date}T${b.time}`);
+              return dateA.getTime() - dateB.getTime();
+          });
+  }, [appointments]);
+
   // --- 3. CHART DATA ---
   const chartData = useMemo(() => {
     const data = [];
@@ -238,10 +253,21 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
     }
   };
 
+  const getTaskIcon = (type: AppointmentType) => {
+      switch (type) {
+          case AppointmentType.CONSULTATION: return 'fa-comments';
+          case AppointmentType.FEE_REMINDER: return 'fa-file-invoice-dollar';
+          case AppointmentType.BIRTHDAY: return 'fa-birthday-cake';
+          case AppointmentType.CARE_CALL: return 'fa-phone-alt';
+          case AppointmentType.PAPERWORK: return 'fa-file-signature';
+          default: return 'fa-calendar-check';
+      }
+  };
+
   return (
     <div className="space-y-6 pb-10 transition-colors duration-300">
       
-      {/* 1. SALES GOAL TRACKING (Replaces Old Metrics) */}
+      {/* 1. SALES GOAL TRACKING */}
       <div className="flex justify-between items-end mb-2">
           <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
               <i className="fas fa-crosshairs text-pru-red mr-2"></i> Mục tiêu & Doanh số
@@ -288,13 +314,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         {/* LEFT COL: ACTION CENTER */}
         <div className="lg:col-span-2 bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col min-h-[500px] transition-colors">
             <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 pt-4">
-                <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500'}`}>
+                <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
                     <i className="fas fa-tasks mr-2"></i>Việc cần làm (10 ngày tới)
                     {activeTab === 'tasks' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
                 </button>
-                <button onClick={() => setActiveTab('pipeline')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'pipeline' ? 'text-pru-red' : 'text-gray-500'}`}>
-                    <i className="fas fa-filter mr-2"></i>Phễu khách hàng
-                    {activeTab === 'pipeline' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
+                <button onClick={() => setActiveTab('pending')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'pending' ? 'text-pru-red' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
+                    <i className="fas fa-clock mr-2"></i>Chờ xử lý ({pendingAppointments.length})
+                    {activeTab === 'pending' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
                 </button>
             </div>
 
@@ -327,23 +353,50 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
                         )}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-3 gap-4 h-full">
-                         {['Tiềm năng', 'Đang tư vấn', 'Đã tham gia'].map(title => (
-                             <div key={title} className="bg-gray-50 dark:bg-pru-dark/30 rounded-xl p-3 flex flex-col">
-                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">{title}</span>
-                                 <div className="flex-1 space-y-2 overflow-y-auto max-h-[300px]">
-                                     {customers.filter(c => c.status.includes(title)).map(c => (
-                                         <div key={c.id} className="bg-white dark:bg-pru-card p-3 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm text-xs dark:text-gray-300">
-                                             <div className="font-bold">{c.fullName}</div>
-                                             {c.analysis?.readiness === ReadinessLevel.HOT && <div className="text-[10px] text-orange-500 font-bold mt-1"><i className="fas fa-fire"></i> HOT</div>}
-                                         </div>
-                                     ))}
-                                     {customers.filter(c => c.status.includes(title)).length === 0 && (
-                                         <p className="text-center text-xs text-gray-400 italic mt-4">Trống</p>
-                                     )}
-                                 </div>
-                             </div>
-                         ))}
+                    // PENDING / ALL UPCOMING TAB
+                    <div className="space-y-3">
+                        {pendingAppointments.length > 0 ? (
+                            pendingAppointments.map(appt => {
+                                const now = new Date();
+                                const apptDate = new Date(`${appt.date}T${appt.time}`);
+                                const isOverdue = apptDate < now;
+                                const customer = customers.find(c => c.id === appt.customerId);
+
+                                return (
+                                    <div key={appt.id} className={`p-4 rounded-xl border shadow-sm flex items-center gap-4 transition group ${isOverdue ? 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white border-gray-100 dark:bg-pru-dark/50 dark:border-gray-800'}`}>
+                                        {/* Icon */}
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                                            <i className={`fas ${getTaskIcon(appt.type)}`}></i> 
+                                        </div>
+                                        
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start">
+                                                <h4 className={`font-bold text-sm ${isOverdue ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                                    {appt.customerName}
+                                                </h4>
+                                                {isOverdue && <span className="text-[10px] font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded shadow-sm">Quá hạn</span>}
+                                            </div>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+                                                {appt.type} • {formatDateVN(appt.date)} lúc {appt.time}
+                                            </p>
+                                            {appt.note && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1 border-l-2 border-gray-200 pl-2">{appt.note}</p>}
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex gap-2">
+                                            <Link to="/appointments" className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-pru-red hover:text-white transition">
+                                                <i className="fas fa-arrow-right text-xs"></i>
+                                            </Link>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                <i className="fas fa-check-double text-4xl mb-2 opacity-50"></i>
+                                <p>Không có công việc nào tồn đọng.</p>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
