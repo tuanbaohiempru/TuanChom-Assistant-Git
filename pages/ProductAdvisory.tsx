@@ -236,7 +236,7 @@ const ProductAdvisoryPage: React.FC<ProductAdvisoryPageProps> = ({ customers, pr
                 <div className="h-full flex flex-col lg:grid lg:grid-cols-12 lg:gap-6 lg:p-6 overflow-y-auto lg:overflow-hidden">
                     
                     {/* LEFT COLUMN: CONFIGURATOR (Visible on 'design' tab or desktop) */}
-                    <div className={`lg:col-span-7 h-full flex flex-col gap-4 p-4 lg:p-0 lg:overflow-y-auto pb-24 lg:pb-0 ${activeTab === 'design' ? 'block' : 'hidden lg:block'}`}>
+                    <div className={`lg:col-span-7 h-full flex flex-col gap-4 p-4 lg:p-0 lg:overflow-y-auto pb-32 lg:pb-32 ${activeTab === 'design' ? 'block' : 'hidden lg:block'}`}>
                         
                         {/* 1. CUSTOMER INFO */}
                         <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
@@ -463,7 +463,7 @@ const ProductAdvisoryPage: React.FC<ProductAdvisoryPageProps> = ({ customers, pr
                     </div>
 
                     {/* RIGHT COLUMN: SUMMARY TABLE (Visible on 'summary' tab or desktop) */}
-                    <div className={`lg:col-span-5 h-full flex flex-col gap-4 p-4 lg:p-0 lg:overflow-y-auto ${activeTab === 'summary' ? 'block' : 'hidden lg:block'}`}>
+                    <div className={`lg:col-span-5 h-full flex flex-col gap-4 p-4 lg:p-0 lg:overflow-y-auto pb-32 lg:pb-32 ${activeTab === 'summary' ? 'block' : 'hidden lg:block'}`}>
                         
                         {/* FEE BREAKDOWN TABLE */}
                         <div className="bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 flex-1 overflow-hidden flex flex-col">
