@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Customer, Contract, CustomerStatus, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, FinancialPriority, RelationshipType, CustomerRelationship, Illustration, FinancialStatus, PersonalityType, ReadinessLevel } from '../types';
-import { ConfirmModal, formatDateVN, SearchableCustomerSelect, CurrencyInput } from '../components/Shared';
+import { Customer, Contract, Appointment, CustomerStatus, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, FinancialPriority, RelationshipType, Illustration, FinancialStatus, PersonalityType, ReadinessLevel } from '../types';
+import { ConfirmModal, formatDateVN } from '../components/Shared';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
 
 interface CustomersPageProps {
     customers: Customer[];
     contracts: Contract[];
+    appointments?: Appointment[]; // Add appointments to props for dependency checking
     illustrations?: Illustration[]; 
     onAdd: (c: Customer) => Promise<void>;
     onUpdate: (c: Customer) => Promise<void>;
@@ -17,7 +18,7 @@ interface CustomersPageProps {
     onDeleteIllustration?: (id: string) => Promise<void>;
 }
 
-const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, illustrations = [], onAdd, onUpdate, onDelete, onConvertIllustration, onDeleteIllustration }) => {
+const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, appointments = [], illustrations = [], onAdd, onUpdate, onDelete, onConvertIllustration, onDeleteIllustration }) => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -35,8 +36,8 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         dob: '',
         phone: '',
         idCard: '',
-        job: '', // Maps to occupation
-        occupation: '', // New field
+        job: '',
+        occupation: '', 
         companyAddress: '',
         maritalStatus: MaritalStatus.MARRIED,
         financialRole: FinancialRole.MAIN_BREADWINNER,
@@ -84,7 +85,35 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
         return matchesSearch && matchesStatus;
     });
 
-    // --- HANDLERS ---
+    // --- SMART VALIDATION HANDLERS ---
+
+    const checkDuplicate = (customer: Customer): string | null => {
+        // Normalize phone: remove spaces, dots, dashes
+        const normalize = (str: string) => str.replace(/[\s\.\-]/g, '');
+        const newPhone = normalize(customer.phone);
+        const newIdCard = customer.idCard ? normalize(customer.idCard) : '';
+
+        const duplicate = customers.find(c => {
+            // Skip self check if updating
+            if (customer.id && c.id === customer.id) return false;
+
+            const existPhone = normalize(c.phone);
+            const existIdCard = c.idCard ? normalize(c.idCard) : '';
+
+            // Check Phone collision
+            if (newPhone && existPhone === newPhone) return true;
+            // Check ID Card collision
+            if (newIdCard && existIdCard === newIdCard) return true;
+
+            return false;
+        });
+
+        if (duplicate) {
+            return `Trùng lặp dữ liệu! Khách hàng "${duplicate.fullName}" đã tồn tại với SĐT hoặc CCCD này.`;
+        }
+        return null;
+    };
+
     const handleOpenAdd = () => {
         setFormData(defaultCustomer);
         setShowModal(true);
@@ -92,15 +121,54 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
 
     const handleSave = async () => {
         if (!formData.fullName) return alert("Vui lòng nhập Họ tên khách hàng");
+        if (!formData.phone) return alert("Vui lòng nhập Số điện thoại");
+
+        // 1. Check Duplicates
+        const duplicateError = checkDuplicate(formData);
+        if (duplicateError) {
+            alert(duplicateError);
+            return;
+        }
+
         await onAdd(formData);
         setShowModal(false);
+    };
+
+    const handleDeleteClick = (c: Customer) => {
+        // 2. Check Dependencies (Safe Delete)
+        const relatedContracts = contracts.filter(ct => ct.customerId === c.id);
+        const relatedApps = appointments.filter(a => a.customerId === c.id);
+
+        if (relatedContracts.length > 0) {
+            alert(`KHÔNG THỂ XÓA!\nKhách hàng ${c.fullName} đang đứng tên ${relatedContracts.length} Hợp đồng.\nVui lòng xóa hoặc chuyển đổi hợp đồng trước.`);
+            return;
+        }
+
+        if (relatedApps.length > 0) {
+            const confirmApp = window.confirm(`CẢNH BÁO: Khách hàng này có ${relatedApps.length} lịch hẹn/công việc liên quan. Nếu xóa khách hàng, các lịch hẹn này có thể bị lỗi hiển thị. Bạn có chắc chắn muốn tiếp tục?`);
+            if (!confirmApp) return;
+        }
+
+        setDeleteConfirm({isOpen: true, id: c.id, name: c.fullName});
     };
 
     const getActiveContractCount = (customerId: string) => {
         return contracts.filter(c => c.customerId === customerId && c.status === 'Đang hiệu lực').length;
     };
 
-    const handleBatchSave = async (validCustomers: Customer[]) => { await Promise.all(validCustomers.map(c => onAdd(c))); };
+    const handleBatchSave = async (validCustomers: Customer[]) => { 
+        // Filter duplicates in batch
+        const uniqueOnes = [];
+        for (const c of validCustomers) {
+            if (!checkDuplicate(c)) {
+                uniqueOnes.push(c);
+            }
+        }
+        if (uniqueOnes.length < validCustomers.length) {
+            alert(`Đã bỏ qua ${validCustomers.length - uniqueOnes.length} khách hàng do trùng lặp dữ liệu.`);
+        }
+        await Promise.all(uniqueOnes.map(c => onAdd(c))); 
+    };
 
     return (
         <div className="space-y-6">
@@ -145,7 +213,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         </div>
                         <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl border-t border-gray-100 dark:border-gray-800 flex justify-between items-center gap-2">
                             <button onClick={(e) => { e.stopPropagation(); navigate(`/advisory/${c.id}`); }} className="flex-1 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold hover:bg-purple-200 flex items-center justify-center"><i className="fas fa-theater-masks mr-1.5"></i>Roleplay</button>
-                            <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({isOpen: true, id: c.id, name: c.fullName}); }} className="w-8 h-8 rounded bg-white border text-red-500 flex items-center justify-center hover:bg-red-50"><i className="fas fa-trash"></i></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(c); }} className="w-8 h-8 rounded bg-white border text-red-500 flex items-center justify-center hover:bg-red-50"><i className="fas fa-trash"></i></button>
                         </div>
                     </div>
                 ))}
@@ -161,7 +229,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                         </div>
                         <div className="space-y-4 mb-6">
                             <div><label className="label-text">Họ và tên *</label><input className="input-field" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} /></div>
-                            <div><label className="label-text">Số điện thoại</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                            <div><label className="label-text">Số điện thoại *</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="label-text">Giới tính</label><select className="input-field" value={formData.gender} onChange={(e: any) => setFormData({...formData, gender: e.target.value})}>{Object.values(Gender).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
                                 <div><label className="label-text">Trạng thái</label><select className="input-field" value={formData.status} onChange={(e: any) => setFormData({...formData, status: e.target.value})}>{Object.values(CustomerStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
@@ -171,7 +239,7 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, ill
                             <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>
                             <button onClick={handleSave} className="px-4 py-2 bg-pru-red text-white font-bold rounded-lg hover:bg-red-700 shadow-md">Lưu Nhanh</button>
                         </div>
-                        <p className="text-xs text-center text-gray-400 mt-4 italic">Để nhập đầy đủ thông tin, vui lòng lưu nhanh sau đó vào chi tiết.</p>
+                        <p className="text-xs text-center text-gray-400 mt-4 italic">Hệ thống sẽ tự động kiểm tra trùng lặp SĐT/CCCD.</p>
                     </div>
                 </div>
             )}

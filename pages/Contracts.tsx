@@ -97,7 +97,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
 
     const handleOpenEdit = (c: Contract) => {
         setFormData({
-            ...defaultContract, // Ensure new fields exist for old data
+            ...defaultContract, 
             ...c,
             issuanceType: c.issuanceType || IssuanceType.STANDARD
         });
@@ -108,12 +108,20 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     const handleSave = async () => {
         if (!formData.contractNumber || !formData.customerId) return alert("Vui lòng nhập số HĐ và chọn khách hàng");
         
-        // Recalculate total fee: Base + Riders + Loading
+        // 1. Strict Recalculation of Total Fee
+        // Total Fee = Main Product Fee + Sum(Rider Fees) + Loading Fee (If applicable)
         const baseFee = formData.mainProduct.fee;
         const riderFee = formData.riders.reduce((sum, r) => sum + r.fee, 0);
         const loading = formData.issuanceType === IssuanceType.CONDITIONAL ? (formData.loadingFee || 0) : 0;
         
-        const finalData = { ...formData, totalFee: baseFee + riderFee + loading };
+        const strictTotalFee = baseFee + riderFee + loading;
+        
+        const finalData = { 
+            ...formData, 
+            totalFee: strictTotalFee,
+            // Ensure loading fee is 0 if standard
+            loadingFee: formData.issuanceType === IssuanceType.STANDARD ? 0 : formData.loadingFee 
+        };
 
         if (isEditing) {
             await onUpdate(finalData);
@@ -141,7 +149,6 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         const product = products.find(p => p.id === productId);
         if (!product) return;
         
-        // Find insured person by name (if changed manually) OR fallback to contract owner
         const insuredPerson = customers.find(c => c.fullName === formData.mainProduct.insuredName) || customers.find(c => c.id === formData.customerId);
         
         let fee = 0;
@@ -155,7 +162,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 age,
                 gender: insuredPerson.gender,
                 term: formData.mainProduct.attributes?.paymentTerm || 15,
-                occupationGroup: 1 // Main product usually group 1 risk for generic calculation or irrelevant
+                occupationGroup: 1 
             });
         }
 
@@ -201,8 +208,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 fee: 0,
                 sumAssured: 0,
                 attributes: {
-                    paymentTerm: 10, // Default term
-                    occupationGroup: 1 // Default occupation
+                    paymentTerm: 10,
+                    occupationGroup: 1 
                 }
             }]
         }));
@@ -216,19 +223,16 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
 
     const updateRider = (index: number, updates: Partial<ContractProduct> | { attributes: any }) => {
         const newRiders = [...formData.riders];
-        // Deep merge attributes if present
         let currentRider = { ...newRiders[index] };
         
         if ('attributes' in updates) {
             currentRider.attributes = { ...currentRider.attributes, ...updates.attributes };
-            // Remove attributes from updates to avoid overwriting the merged object
             const { attributes, ...rest } = updates as any;
             currentRider = { ...currentRider, ...rest };
         } else {
             currentRider = { ...currentRider, ...updates };
         }
         
-        // Handle Product Selection Change
         const updatesWithProduct = updates as Partial<ContractProduct>;
         if (updatesWithProduct.productId) {
             const p = products.find(prod => prod.id === updatesWithProduct.productId);
@@ -236,8 +240,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 currentRider.productName = p.name;
                 currentRider.attributes = {
                     ...currentRider.attributes,
-                    paymentTerm: 10, // Reset default
-                    occupationGroup: 1, // Reset default
+                    paymentTerm: 10, 
+                    occupationGroup: 1, 
                 };
                 if (p.calculationType === ProductCalculationType.HEALTH_CARE) {
                     currentRider.attributes = { ...currentRider.attributes, plan: HTVKPlan.NANG_CAO, package: HTVKPackage.STANDARD };
@@ -245,13 +249,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             }
         }
 
-        // --- Recalculate Fee ---
         const product = products.find(p => p.id === currentRider.productId);
         const customer = customers.find(c => c.fullName === currentRider.insuredName) || customers.find(c => c.id === formData.customerId);
         
         if (product && customer) {
             const age = calculateAge(customer.dob);
-            
             currentRider.fee = calculateProductFee({
                 product,
                 calculationType: product.calculationType || ProductCalculationType.FIXED,
@@ -279,6 +281,9 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
         const diff = new Date(dateStr).getTime() - new Date().getTime();
         return Math.ceil(diff / (1000 * 3600 * 24));
     };
+
+    // Calculate Dynamic Total for Display
+    const currentTotalFee = formData.mainProduct.fee + formData.riders.reduce((s,r) => s + r.fee, 0) + (formData.issuanceType === IssuanceType.CONDITIONAL ? (formData.loadingFee || 0) : 0);
 
     return (
         <div className="space-y-6 pb-20">
@@ -713,8 +718,8 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
 
                         <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-between items-center">
                             <div className="text-sm">
-                                <span className="text-gray-500 dark:text-gray-400">Tổng phí dự kiến:</span>
-                                <span className="font-bold text-lg text-pru-red dark:text-red-400 ml-2">{(formData.mainProduct.fee + formData.riders.reduce((s,r) => s + r.fee, 0) + (formData.issuanceType === IssuanceType.CONDITIONAL ? formData.loadingFee || 0 : 0)).toLocaleString()} đ</span>
+                                <span className="text-gray-500 dark:text-gray-400">Tổng phí tự động tính:</span>
+                                <span className="font-bold text-lg text-pru-red dark:text-red-400 ml-2">{currentTotalFee.toLocaleString()} đ</span>
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>
