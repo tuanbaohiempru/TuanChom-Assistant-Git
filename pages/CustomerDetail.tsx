@@ -101,7 +101,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         
         const newItem: TimelineItem = {
             id: Date.now().toString(),
-            date: new Date().toISOString(),
+            date: new Date().toISOString(), // Use Current Time for precise ordering
             type: newInteraction.type,
             title: newInteraction.title || newInteraction.type,
             content: newInteraction.content,
@@ -133,8 +133,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
             documents: []
         };
 
-        // Note: We don't manually add to timeline here anymore because the 'virtualTimeline' 
-        // will automatically pick up the new Claim record and display it.
         const updatedCustomer = {
             ...customer,
             claims: [item, ...(customer.claims || [])]
@@ -445,12 +443,12 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition">
                                     <i className="fas fa-file-medical text-2xl text-blue-400 mb-2"></i>
-                                    <span className="text-xs font-bold text-gray-500">Upload Hồ sơ bệnh án</span>
+                                    <span className="text-xs font-bold text-gray-500 text-center">Upload Hồ sơ bệnh án</span>
                                     <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'medical')} accept="image/*,.pdf" />
                                 </label>
                                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition">
                                     <i className="fas fa-id-card text-2xl text-green-400 mb-2"></i>
-                                    <span className="text-xs font-bold text-gray-500">Upload CCCD/Khai sinh</span>
+                                    <span className="text-xs font-bold text-gray-500 text-center">Upload CCCD/Khai sinh</span>
                                     <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'personal')} accept="image/*,.pdf" />
                                 </label>
                             </div>
@@ -463,7 +461,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                         </div>
                                         <div className="p-2">
                                             <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{doc.name}</p>
-                                            <p className="text-[10px] text-gray-500 uppercase">{doc.category}</p>
+                                            <p className="text-[10px] text-gray-500 uppercase">{doc.category === 'medical' ? 'Hồ sơ Y khoa' : 'Giấy tờ cá nhân'}</p>
                                         </div>
                                     </a>
                                 ))}
@@ -768,9 +766,10 @@ const EditCustomerModal: React.FC<{
             <style>{`
                 .label-text { display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; margin-bottom: 0.25rem; }
                 .dark .label-text { color: #9ca3af; }
-                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.6rem; border-radius: 0.5rem; outline: none; font-size: 0.875rem; transition: all; }
-                .dark .input-field { background-color: #1f2937; border-color: #374151; color: #f3f4f6; }
-                .input-field:focus { border-color: #ed1b2e; ring: 1px solid #ed1b2e; }
+                .input-field { width: 100%; border: 1px solid #e5e7eb; padding: 0.5rem; border-radius: 0.5rem; outline: none; }
+                .dark .input-field { background-color: #111827; border-color: #374151; color: #f3f4f6; }
+                .animate-fade-in { animation: fadeIn 0.3s ease-in; }
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             `}</style>
         </div>
     );

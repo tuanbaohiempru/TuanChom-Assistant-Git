@@ -45,11 +45,11 @@ exports.geminiGateway = onCall(async (request) => {
         throw new HttpsError('invalid-argument', 'Request body is missing.');
     }
 
-    const { endpoint, model, contents, message, history, systemInstruction, config, url, fileUrls } = data;
+    const { endpoint, model, contents, message, history, systemInstruction, config, url, tools } = data;
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     const DEFAULT_MODEL = 'gemini-3-flash-preview'; 
 
-    // --- ENDPOINT: EXTRACT TEXT FROM PDF (Replacement for Cache) ---
+    // --- ENDPOINT: EXTRACT TEXT FROM PDF ---
     if (endpoint === 'extractText') {
         if (!url) {
             throw new HttpsError('invalid-argument', 'Missing URL for extraction.');
@@ -60,22 +60,11 @@ exports.geminiGateway = onCall(async (request) => {
 
         try {
             console.log(`[Extraction] Processing: ${url}`);
-            // 1. Download File
             await downloadFile(url, tempFilePath);
-
-            // 2. Read Buffer
             const dataBuffer = fs.readFileSync(tempFilePath);
-
-            // 3. Extract Text using pdf-parse
             const pdfData = await pdfParse(dataBuffer);
-            
-            // Clean up text slightly (remove excessive newlines)
             const cleanText = pdfData.text.replace(/\n\s*\n/g, '\n').trim();
-
-            console.log(`[Extraction] Success. Length: ${cleanText.length} chars.`);
-
             return { text: cleanText };
-
         } catch (error) {
             console.error("[Extraction Error]", error);
             throw new HttpsError('internal', `Failed to extract text: ${error.message}`);
@@ -89,7 +78,7 @@ exports.geminiGateway = onCall(async (request) => {
         const targetModel = model || DEFAULT_MODEL;
         const cleanConfig = { ...(config || {}) };
         
-        // Fix system instruction format
+        // Handle System Instruction
         if (systemInstruction) {
             if (typeof systemInstruction === 'string') {
                 cleanConfig.systemInstruction = { parts: [{ text: systemInstruction }] };
@@ -98,34 +87,49 @@ exports.geminiGateway = onCall(async (request) => {
             }
         }
 
-        let initParams = { model: targetModel, config: cleanConfig };
-        // No more cachedContent param
+        // Handle Tools (Function Calling)
+        if (tools) {
+            cleanConfig.tools = tools;
+        }
 
-        let resultText = '';
+        let initParams = { model: targetModel, config: cleanConfig };
+        let responsePayload = {};
 
         if (endpoint === 'chat') {
             const validHistory = Array.isArray(history) ? history : [];
             const chat = ai.chats.create({ ...initParams, history: validHistory });
-            const msgContent = message || (typeof contents === 'string' ? contents : " "); 
-            const result = await chat.sendMessage({ message: msgContent });
-            resultText = result.text;
+            
+            // Handle Message: Can be string or array of parts (for tool response)
+            let msgContent = message;
+            if (!message && contents) msgContent = contents; // Fallback
+            
+            const result = await chat.sendMessage({ message: msgContent || " " });
+            
+            // Return full structure to support Function Calling
+            responsePayload = {
+                text: result.text,
+                functionCalls: result.functionCalls, // Array of function calls
+                candidates: result.candidates
+            };
         } else {
             let formattedContents = contents;
             if (typeof contents === 'string') formattedContents = { parts: [{ text: contents }] };
+            
             const result = await ai.models.generateContent({ ...initParams, contents: formattedContents });
-            resultText = result.text;
+            responsePayload = {
+                text: result.text,
+                functionCalls: result.functionCalls
+            };
         }
 
-        return { text: resultText || "" };
+        return responsePayload;
 
     } catch (error) {
         console.error("[Gemini API Error]", error.message);
-        
         let code = 'internal';
         if (error.message.includes('API key')) code = 'permission-denied';
         else if (error.status === 404) code = 'not-found';
         else if (error.status === 429) code = 'resource-exhausted';
-        
         throw new HttpsError(code, error.message);
     }
 });
