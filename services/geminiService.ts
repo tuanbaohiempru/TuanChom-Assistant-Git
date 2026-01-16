@@ -4,6 +4,7 @@ import { functions, isFirebaseReady } from "./firebaseConfig";
 import { GoogleGenAI, Type, FunctionDeclaration, Tool, FunctionCall } from "@google/genai";
 import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Appointment, AppointmentStatus, AppointmentType, InteractionType, TimelineItem, IssuanceType } from "../types";
 import { addData, updateData, COLLECTIONS } from "./db";
+import { HTVK_BENEFITS } from "../data/pruHanhTrangVuiKhoe"; // IMPORT HTVK DATA
 
 // Initialize Client-side AI (Fallback)
 const getApiKey = (): string => {
@@ -248,7 +249,23 @@ const findRelevantContext = (query: string, state: AppState): string => {
                     if (ct.issuanceType === IssuanceType.CONDITIONAL) {
                         warning = `[⚠️ CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${ct.exclusionNote || 'Không rõ'}". Tăng phí: ${ct.loadingFee || 0}đ]`;
                     }
-                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status}) - ${ct.mainProduct.productName}. ${warning}\n`;
+                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status})\n`;
+                    context += `       • SP Chính: ${ct.mainProduct.productName} (STBH: ${ct.mainProduct.sumAssured.toLocaleString()})\n`;
+                    
+                    // Detailed Rider Info (Look specifically for HTVK Plans)
+                    if (ct.riders && ct.riders.length > 0) {
+                        ct.riders.forEach(r => {
+                            let riderDetail = `       • SP Bổ trợ: ${r.productName}`;
+                            if (r.attributes) {
+                                // Important: Extract Plan/Package explicitly for AI
+                                if (r.attributes.plan) riderDetail += ` - Chương trình: "${r.attributes.plan}"`;
+                                if (r.attributes.package) riderDetail += ` (Gói: ${r.attributes.package})`;
+                                if (r.sumAssured > 0) riderDetail += ` - STBH: ${r.sumAssured.toLocaleString()}`;
+                            }
+                            context += `${riderDetail}\n`;
+                        });
+                    }
+                    context += `       ${warning}\n`;
                 });
             }
 
@@ -289,6 +306,16 @@ export const chatWithData = async (
     activeProducts.forEach(p => {
         if (p.extractedContent) knowledgeBase += `\n--- TÀI LIỆU SẢN PHẨM: ${p.name} ---\n${p.extractedContent.substring(0, 15000)}...\n`; 
     });
+    
+    // Custom Logic: Inject Structured Benefits for "Hanh Trang Vui Khoe"
+    // This solves the problem of AI answering generally. We give it the EXACT table.
+    const htvkContext = `
+    \n=== BẢNG QUYỀN LỢI CHI TIẾT SẢN PHẨM "HÀNH TRANG VUI KHỎE" (HTVK) ===
+    (Sử dụng bảng này khi khách hàng hỏi về quyền lợi thẻ sức khỏe, tiền giường, phẫu thuật...)
+    ${JSON.stringify(HTVK_BENEFITS, null, 2)}
+    =========================================================================\n
+    `;
+
     const specificContext = findRelevantContext(query, appState);
 
     // 2. System Prompt
@@ -299,21 +326,27 @@ export const chatWithData = async (
     - Bạn có quyền GHI LẠI (Lưu) tương tác và TẠO LỊCH HẸN bằng cách gọi hàm (function calling).
     - Nếu người dùng yêu cầu "Lưu lại", "Ghi chú lại", "Tạo lịch hẹn", "Nhắc tôi...", HÃY GỌI HÀM TƯƠNGỨNG ngay lập tức. Đừng chỉ nói suông.
     
-    QUY TẮC QUAN TRỌNG VỀ LOẠI TRỪ (EXCLUSIONS):
-    - Khi trả lời về quyền lợi chi trả (Claim), BẮT BUỘC phải kiểm tra xem Hợp đồng có ghi chú [CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN] không.
-    - Nếu có Loại trừ, bạn PHẢI cảnh báo người dùng rằng bệnh/rủi ro này có thể không được chi trả do điều khoản loại trừ.
+    QUY TẮC QUAN TRỌNG KHI TRẢ LỜI VỀ QUYỀN LỢI (BENEFITS):
+    1. **Kiểm tra Hợp đồng:** Xem khách hàng đang tham gia "Chương trình" (Plan) nào trong context (VD: Cơ bản, Toàn diện...).
+    2. **Tra cứu Bảng quyền lợi:** Dựa vào tên Chương trình tìm được, tra cứu trong phần "BẢNG QUYỀN LỢI CHI TIẾT" bên dưới để lấy con số chính xác (Tiền giường, Phẫu thuật...).
+    3. **Trả lời chi tiết:** KHÔNG trả lời chung chung. Hãy nói rõ: "Theo HĐ số X, Chị A đang tham gia chương trình [TÊN], quyền lợi tiền giường là [SỐ TIỀN]/ngày..."
+    
+    QUY TẮC VỀ LOẠI TRỪ (EXCLUSIONS):
+    - Nếu Hợp đồng có ghi chú [CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN], bạn PHẢI cảnh báo người dùng.
     
     DỮ LIỆU KHÁCH HÀNG & BỐI CẢNH:
     ${specificContext}
     
-    KIẾN THỨC SẢN PHẨM:
+    DỮ LIỆU SẢN PHẨM CẤU TRÚC (Ưu tiên dùng số liệu ở đây):
+    ${htvkContext}
+    
+    TÀI LIỆU SẢN PHẨM KHÁC (PDF):
     ${knowledgeBase}
     
     HƯỚNG DẪN:
-    1. Tra cứu thông tin để trả lời câu hỏi.
-    2. Nếu cần lưu thông tin, hãy gọi 'save_interaction'.
-    3. Nếu cần đặt lịch, hãy gọi 'create_appointment'.
-    4. Trả lời ngắn gọn, chuyên nghiệp.
+    1. Xác định khách hàng và hợp đồng liên quan.
+    2. Nếu hỏi về HTVK, tìm tên Chương trình -> Tra bảng -> Trả lời số tiền cụ thể.
+    3. Trả lời ngắn gọn, chuyên nghiệp.
     `;
 
     const cleanHistory = sanitizeHistory(history);
@@ -345,15 +378,7 @@ export const chatWithData = async (
             }
 
             // STEP 3: Send Tool Results back to AI to get final confirmation text
-            // Note: In Cloud Functions or simple chat API, we often just make a fresh call with the result info 
-            // or construct a proper multi-turn history. For simplicity here, we append tool result to history and ask for summary.
-            
             const toolOutputText = JSON.stringify(toolResults);
-            
-            // Construct a follow-up message pretending to be the system providing tool outputs
-            // Since `chats.create` maintains history in the session instance on client, 
-            // but here we might be stateless if using Cloud Functions.
-            // We will do a recursive call or a second call with updated history.
             
             const secondTurnResponse = await callAI({
                 endpoint: 'chat',

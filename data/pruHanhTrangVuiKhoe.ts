@@ -14,6 +14,50 @@ export enum HTVKPackage {
     GOI_2 = 'Gói 2'
 }
 
+// --- NEW: STRUCTURED BENEFITS DATA FOR AI ---
+export const HTVK_BENEFITS = {
+    [HTVKPlan.CO_BAN]: {
+        gioi_han_nam: "100 Triệu đồng",
+        pham_vi: "Việt Nam",
+        noi_tru: {
+            tien_giuong: "500.000 đ/ngày",
+            phau_thuat: "10.000.000 đ/lần",
+            noi_tru_khac: "10.000.000 đ/năm",
+            khoa_cham_soc_dac_biet: "1.000.000 đ/ngày (Max 45 ngày/năm)"
+        }
+    },
+    [HTVKPlan.NANG_CAO]: {
+        gioi_han_nam: "200 Triệu đồng",
+        pham_vi: "Việt Nam",
+        noi_tru: {
+            tien_giuong: "1.000.000 đ/ngày",
+            phau_thuat: "20.000.000 đ/lần",
+            noi_tru_khac: "20.000.000 đ/năm",
+            khoa_cham_soc_dac_biet: "2.000.000 đ/ngày (Max 45 ngày/năm)"
+        }
+    },
+    [HTVKPlan.TOAN_DIEN]: {
+        gioi_han_nam: "400 Triệu đồng",
+        pham_vi: "Đông Nam Á",
+        noi_tru: {
+            tien_giuong: "2.500.000 đ/ngày",
+            phau_thuat: "50.000.000 đ/lần",
+            noi_tru_khac: "50.000.000 đ/năm",
+            khoa_cham_soc_dac_biet: "5.000.000 đ/ngày (Max 45 ngày/năm)"
+        }
+    },
+    [HTVKPlan.HOAN_HAO]: {
+        gioi_han_nam: "1 Tỷ đồng",
+        pham_vi: "Toàn cầu (trừ Mỹ)",
+        noi_tru: {
+            tien_giuong: "5.000.000 đ/ngày",
+            phau_thuat: "100.000.000 đ/lần",
+            noi_tru_khac: "100.000.000 đ/năm",
+            khoa_cham_soc_dac_biet: "10.000.000 đ/ngày (Max 45 ngày/năm)"
+        }
+    }
+};
+
 interface FeeSet {
     co_ban?: number;
     nang_cao?: number;
