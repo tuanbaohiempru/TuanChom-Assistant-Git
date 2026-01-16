@@ -243,19 +243,21 @@ const findRelevantContext = (query: string, state: AppState): string => {
             // Add Contracts with WARNINGS for Exclusions
             const customerContracts = state.contracts.filter(ct => ct.customerId === c.id);
             if (customerContracts.length > 0) {
-                context += `   - Danh sách Hợp đồng:\n`;
+                context += `   - Danh sách Hợp đồng (LƯU Ý NGƯỜI ĐƯỢC BẢO HIỂM):\n`;
                 customerContracts.forEach(ct => {
                     let warning = "";
                     if (ct.issuanceType === IssuanceType.CONDITIONAL) {
                         warning = `[⚠️ CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${ct.exclusionNote || 'Không rõ'}". Tăng phí: ${ct.loadingFee || 0}đ]`;
                     }
-                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status})\n`;
-                    context += `       • SP Chính: ${ct.mainProduct.productName} (STBH: ${ct.mainProduct.sumAssured.toLocaleString()})\n`;
+                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status}) - Bên mua: ${c.fullName}\n`;
+                    // Updated: Explicitly state "Người Được Bảo Hiểm (NĐBH)"
+                    context += `       • SP Chính: ${ct.mainProduct.productName} -> NĐBH: "${ct.mainProduct.insuredName}" (STBH: ${ct.mainProduct.sumAssured.toLocaleString()})\n`;
                     
                     // Detailed Rider Info (Look specifically for HTVK Plans)
                     if (ct.riders && ct.riders.length > 0) {
                         ct.riders.forEach(r => {
-                            let riderDetail = `       • SP Bổ trợ: ${r.productName}`;
+                            // Updated: Explicitly state "NĐBH" for riders
+                            let riderDetail = `       • SP Bổ trợ: ${r.productName} -> NĐBH: "${r.insuredName}"`;
                             if (r.attributes) {
                                 // Important: Extract Plan/Package explicitly for AI
                                 if (r.attributes.plan) riderDetail += ` - Chương trình: "${r.attributes.plan}"`;
@@ -331,6 +333,12 @@ export const chatWithData = async (
     2. **Tra cứu Bảng quyền lợi:** Dựa vào tên Chương trình tìm được, tra cứu trong phần "BẢNG QUYỀN LỢI CHI TIẾT" bên dưới để lấy con số chính xác (Tiền giường, Phẫu thuật...).
     3. **Trả lời chi tiết:** KHÔNG trả lời chung chung. Hãy nói rõ: "Theo HĐ số X, Chị A đang tham gia chương trình [TÊN], quyền lợi tiền giường là [SỐ TIỀN]/ngày..."
     
+    QUY TẮC PHÂN BIỆT ĐỐI TƯỢNG (QUAN TRỌNG NHẤT):
+    - Một khách hàng (Bên mua bảo hiểm) có thể mua nhiều hợp đồng cho người thân (Vợ, Chồng, Con).
+    - Nếu câu hỏi là "Chị Thanh được quyền lợi gì", bạn phải tìm trong Context các dòng có ghi **"NĐBH: Chị Thanh"** (hoặc tên tương tự).
+    - **TUYỆT ĐỐI KHÔNG** cộng gộp quyền lợi của các sản phẩm mà NĐBH là người khác (Ví dụ: Chồng, Con) vào quyền lợi của Chị Thanh, ngay cả khi Chị Thanh là người mua (Chủ HĐ).
+    - Hãy nói rõ: "Chị Thanh đang được bảo vệ bởi các sản phẩm X, Y... (với tư cách là NĐBH)". Nếu Chị Thanh mua cho con, hãy nói "Chị Thanh có mua cho con là [Tên con] sản phẩm Z...".
+    
     QUY TẮC VỀ LOẠI TRỪ (EXCLUSIONS):
     - Nếu Hợp đồng có ghi chú [CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN], bạn PHẢI cảnh báo người dùng.
     
@@ -345,8 +353,8 @@ export const chatWithData = async (
     
     HƯỚNG DẪN:
     1. Xác định khách hàng và hợp đồng liên quan.
-    2. Nếu hỏi về HTVK, tìm tên Chương trình -> Tra bảng -> Trả lời số tiền cụ thể.
-    3. Trả lời ngắn gọn, chuyên nghiệp.
+    2. Kiểm tra kỹ ai là Người Được Bảo Hiểm (NĐBH) cho từng sản phẩm.
+    3. Nếu hỏi về HTVK, tìm tên Chương trình -> Tra bảng -> Trả lời số tiền cụ thể.
     `;
 
     const cleanHistory = sanitizeHistory(history);
