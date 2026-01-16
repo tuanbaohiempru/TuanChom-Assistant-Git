@@ -14,47 +14,77 @@ export enum HTVKPackage {
     GOI_2 = 'Gói 2'
 }
 
-// --- NEW: STRUCTURED BENEFITS DATA FOR AI ---
+// --- UPDATED: STRUCTURED BENEFITS DATA (Source: Brochure 12/2025) ---
 export const HTVK_BENEFITS = {
     [HTVKPlan.CO_BAN]: {
         gioi_han_nam: "100 Triệu đồng",
         pham_vi: "Việt Nam",
         noi_tru: {
-            tien_giuong: "500.000 đ/ngày",
-            phau_thuat: "10.000.000 đ/lần",
-            noi_tru_khac: "10.000.000 đ/năm",
-            khoa_cham_soc_dac_biet: "1.000.000 đ/ngày (Max 45 ngày/năm)"
+            tien_giuong: "600.000 đ/ngày (Tối đa 80 ngày/năm)",
+            khoa_cham_soc_dac_biet: "1.000.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phau_thuat: "12.000.000 đ/lần nằm viện",
+            giuong_nguoi_than: "300.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phu_cap_nam_vien_cong: "100.000 đ/ngày (Từ ngày thứ 3, tối đa 30 ngày/năm)",
+            dieu_tri_ung_thu: "Theo chi phí thực tế (Nội trú & Ngoại trú)"
+        },
+        ngoai_tru_dac_biet: {
+            phau_thuat_ngoai_tru: "1.700.000 đ/năm",
+            cap_cuu_tai_nan: "1.700.000 đ/năm",
+            loc_than: "Không áp dụng"
         }
     },
     [HTVKPlan.NANG_CAO]: {
         gioi_han_nam: "200 Triệu đồng",
         pham_vi: "Việt Nam",
         noi_tru: {
-            tien_giuong: "1.000.000 đ/ngày",
-            phau_thuat: "20.000.000 đ/lần",
-            noi_tru_khac: "20.000.000 đ/năm",
-            khoa_cham_soc_dac_biet: "2.000.000 đ/ngày (Max 45 ngày/năm)"
+            tien_giuong: "1.250.000 đ/ngày (Tối đa 80 ngày/năm)",
+            khoa_cham_soc_dac_biet: "2.000.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phau_thuat: "25.000.000 đ/lần nằm viện",
+            giuong_nguoi_than: "625.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phu_cap_nam_vien_cong: "250.000 đ/ngày (Từ ngày thứ 3, tối đa 30 ngày/năm)",
+            dieu_tri_ung_thu: "Theo chi phí thực tế (Nội trú & Ngoại trú)"
+        },
+        ngoai_tru_dac_biet: {
+            phau_thuat_ngoai_tru: "3.500.000 đ/năm",
+            cap_cuu_tai_nan: "3.500.000 đ/năm",
+            loc_than: "Không áp dụng"
         }
     },
     [HTVKPlan.TOAN_DIEN]: {
         gioi_han_nam: "400 Triệu đồng",
-        pham_vi: "Đông Nam Á",
+        pham_vi: "Việt Nam",
         noi_tru: {
-            tien_giuong: "2.500.000 đ/ngày",
-            phau_thuat: "50.000.000 đ/lần",
-            noi_tru_khac: "50.000.000 đ/năm",
-            khoa_cham_soc_dac_biet: "5.000.000 đ/ngày (Max 45 ngày/năm)"
-        }
+            tien_giuong: "2.000.000 đ/ngày (Tối đa 80 ngày/năm)",
+            khoa_cham_soc_dac_biet: "4.000.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phau_thuat: "50.000.000 đ/lần nằm viện",
+            giuong_nguoi_than: "1.000.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phu_cap_nam_vien_cong: "500.000 đ/ngày (Từ ngày thứ 3, tối đa 30 ngày/năm)",
+            dieu_tri_ung_thu: "Theo chi phí thực tế (Nội trú & Ngoại trú)"
+        },
+        ngoai_tru_dac_biet: {
+            phau_thuat_ngoai_tru: "10.000.000 đ/năm",
+            cap_cuu_tai_nan: "4.000.000 đ/năm",
+            loc_than: "10.000.000 đ/năm"
+        },
+        quyen_loi_bo_sung: "Có thể mua thêm: Ngoại trú (12Tr/năm), Nha khoa (5Tr/năm)"
     },
     [HTVKPlan.HOAN_HAO]: {
         gioi_han_nam: "1 Tỷ đồng",
-        pham_vi: "Toàn cầu (trừ Mỹ)",
+        pham_vi: "Đông Nam Á",
         noi_tru: {
-            tien_giuong: "5.000.000 đ/ngày",
-            phau_thuat: "100.000.000 đ/lần",
-            noi_tru_khac: "100.000.000 đ/năm",
-            khoa_cham_soc_dac_biet: "10.000.000 đ/ngày (Max 45 ngày/năm)"
-        }
+            tien_giuong: "6.000.000 đ/ngày (Tối đa 80 ngày/năm)",
+            khoa_cham_soc_dac_biet: "12.000.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phau_thuat: "100.000.000 đ/lần nằm viện",
+            giuong_nguoi_than: "2.500.000 đ/ngày (Tối đa 30 ngày/năm)",
+            phu_cap_nam_vien_cong: "1.000.000 đ/ngày (Từ ngày thứ 3, tối đa 30 ngày/năm)",
+            dieu_tri_ung_thu: "Theo chi phí thực tế (Nội trú & Ngoại trú)"
+        },
+        ngoai_tru_dac_biet: {
+            phau_thuat_ngoai_tru: "50.000.000 đ/năm",
+            cap_cuu_tai_nan: "15.000.000 đ/năm",
+            loc_than: "50.000.000 đ/năm"
+        },
+        quyen_loi_bo_sung: "Có thể mua thêm: Ngoại trú (40Tr/năm), Nha khoa (20Tr/năm), Thai sản (60Tr/năm)"
     }
 };
 
