@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { Contract, Customer, Product, ProductType, ContractStatus, PaymentFrequency, ProductCalculationType, ContractProduct, Gender, ProductStatus } from '../types';
+import { Contract, Customer, Product, ProductType, ContractStatus, PaymentFrequency, ProductCalculationType, ContractProduct, Gender, ProductStatus, IssuanceType } from '../types';
 import { SearchableCustomerSelect, CurrencyInput, ConfirmModal, formatDateVN } from '../components/Shared';
 import { calculateProductFee } from '../services/productCalculator';
 import { HTVKPlan, HTVKPackage } from '../data/pruHanhTrangVuiKhoe';
+import { uploadFile } from '../services/storage';
 
 interface ContractsPageProps {
     contracts: Contract[];
@@ -25,6 +26,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
 
     const defaultContract: Contract = {
         id: '',
@@ -42,7 +44,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             fee: 0,
             sumAssured: 0
         },
-        riders: []
+        riders: [],
+        issuanceType: IssuanceType.STANDARD,
+        loadingFee: 0,
+        exclusionNote: '',
+        decisionLetterUrl: ''
     };
 
     const [formData, setFormData] = useState<Contract>(defaultContract);
@@ -90,7 +96,11 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     };
 
     const handleOpenEdit = (c: Contract) => {
-        setFormData(c);
+        setFormData({
+            ...defaultContract, // Ensure new fields exist for old data
+            ...c,
+            issuanceType: c.issuanceType || IssuanceType.STANDARD
+        });
         setIsEditing(true);
         setShowModal(true);
     };
@@ -98,9 +108,12 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
     const handleSave = async () => {
         if (!formData.contractNumber || !formData.customerId) return alert("Vui lòng nhập số HĐ và chọn khách hàng");
         
-        // Recalculate total fee just in case
-        const total = formData.mainProduct.fee + formData.riders.reduce((sum, r) => sum + r.fee, 0);
-        const finalData = { ...formData, totalFee: total };
+        // Recalculate total fee: Base + Riders + Loading
+        const baseFee = formData.mainProduct.fee;
+        const riderFee = formData.riders.reduce((sum, r) => sum + r.fee, 0);
+        const loading = formData.issuanceType === IssuanceType.CONDITIONAL ? (formData.loadingFee || 0) : 0;
+        
+        const finalData = { ...formData, totalFee: baseFee + riderFee + loading };
 
         if (isEditing) {
             await onUpdate(finalData);
@@ -108,6 +121,20 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
             await onAdd(finalData);
         }
         setShowModal(false);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsUploadingFile(true);
+        try {
+            const url = await uploadFile(file, 'contract_docs');
+            setFormData(prev => ({ ...prev, decisionLetterUrl: url }));
+        } catch (err) {
+            alert("Lỗi upload file: " + err);
+        } finally {
+            setIsUploadingFile(false);
+        }
     };
 
     const handleUpdateMainProduct = (productId: string) => {
@@ -317,6 +344,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                     const customer = customers.find(c => c.id === contract.customerId);
                     const daysDue = getDaysUntilDue(contract.nextPaymentDate);
                     const isExpanded = expandedContractId === contract.id;
+                    const isConditional = contract.issuanceType === IssuanceType.CONDITIONAL;
 
                     return (
                         <div key={contract.id} className="bg-white dark:bg-pru-card rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden hover:shadow-md transition group">
@@ -327,11 +355,16 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                         <i className={`fas ${contract.status === ContractStatus.ACTIVE ? 'fa-shield-alt' : 'fa-exclamation-triangle'}`}></i>
                                     </div>
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <h3 className="font-black text-lg text-gray-800 dark:text-gray-100 cursor-pointer hover:text-pru-red transition" onClick={() => copyToClipboard(contract.contractNumber)} title="Bấm để sao chép">
                                                 {contract.contractNumber}
                                             </h3>
                                             <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${contract.status === ContractStatus.ACTIVE ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{contract.status}</span>
+                                            {isConditional && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-orange-100 text-orange-700 border border-orange-200">
+                                                    <i className="fas fa-exclamation-circle mr-1"></i> Có Loại trừ/Tăng phí
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                                             <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mr-1">BMBH:</span> 
@@ -390,6 +423,17 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                     </div>
                                 </div>
 
+                                {/* Exclusion Warning in Card */}
+                                {isConditional && (
+                                    <div className="mb-4 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 p-3 rounded-lg flex items-start gap-3">
+                                        <i className="fas fa-exclamation-triangle text-orange-600 mt-0.5"></i>
+                                        <div>
+                                            <p className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase">Lưu ý Thư thỏa thuận</p>
+                                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">{contract.exclusionNote || 'Có điều kiện loại trừ hoặc tăng phí.'}</p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Collapsible Riders */}
                                 {contract.riders.length > 0 && (
                                     <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
@@ -426,7 +470,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                 })}
             </div>
 
-            {/* MODAL (Existing logic preserved, layout improved slightly) */}
+            {/* MODAL */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
                     <div className="bg-white dark:bg-pru-card rounded-xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl border border-gray-100 dark:border-gray-700 transition-colors">
@@ -451,6 +495,55 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                                 <div><label className="label-text">Ngày đóng phí tới</label><input type="date" className="input-field" value={formData.nextPaymentDate} onChange={e => setFormData({...formData, nextPaymentDate: e.target.value})} /></div>
                                 <div><label className="label-text">Định kỳ đóng phí</label><select className="input-field" value={formData.paymentFrequency} onChange={(e: any) => setFormData({...formData, paymentFrequency: e.target.value})}>{Object.values(PaymentFrequency).map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="label-text">Trạng thái</label><select className="input-field" value={formData.status} onChange={(e: any) => setFormData({...formData, status: e.target.value})}>{Object.values(ContractStatus).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                            </div>
+
+                            {/* UNDERWRITING DECISION SECTION */}
+                            <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="font-bold text-purple-800 dark:text-purple-300 text-sm uppercase flex items-center">
+                                        <i className="fas fa-file-medical-alt mr-2"></i> Quyết định Thẩm định (Underwriting)
+                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-bold text-gray-600 dark:text-gray-300">Có điều kiện?</label>
+                                        <button 
+                                            onClick={() => setFormData({...formData, issuanceType: formData.issuanceType === IssuanceType.CONDITIONAL ? IssuanceType.STANDARD : IssuanceType.CONDITIONAL})}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${formData.issuanceType === IssuanceType.CONDITIONAL ? 'bg-orange-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.issuanceType === IssuanceType.CONDITIONAL ? 'translate-x-6' : 'translate-x-1'}`} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {formData.issuanceType === IssuanceType.CONDITIONAL && (
+                                    <div className="space-y-4 animate-fade-in">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="label-text text-orange-600">Phí Tăng (Loading) VNĐ</label>
+                                                <CurrencyInput className="input-field font-bold text-orange-600" value={formData.loadingFee || 0} onChange={v => setFormData({...formData, loadingFee: v})} />
+                                            </div>
+                                            <div>
+                                                <label className="label-text">Đính kèm Thư thỏa thuận (Ảnh/PDF)</label>
+                                                <div className="flex items-center gap-2">
+                                                    <label className="cursor-pointer bg-white border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center dark:bg-gray-800 dark:text-gray-300">
+                                                        {isUploadingFile ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-upload mr-1"></i>} Upload
+                                                        <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*,.pdf" disabled={isUploadingFile} />
+                                                    </label>
+                                                    {formData.decisionLetterUrl && <a href={formData.decisionLetterUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 underline truncate max-w-[150px]">Xem file</a>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="label-text">Nội dung Loại trừ / Ghi chú</label>
+                                            <textarea 
+                                                className="input-field" 
+                                                rows={2} 
+                                                placeholder="VD: Loại trừ các bệnh lý liên quan đến dạ dày, tá tràng..." 
+                                                value={formData.exclusionNote}
+                                                onChange={e => setFormData({...formData, exclusionNote: e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* MAIN PRODUCT */}
@@ -621,7 +714,7 @@ const ContractsPage: React.FC<ContractsPageProps> = ({ contracts, customers, pro
                         <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl flex justify-between items-center">
                             <div className="text-sm">
                                 <span className="text-gray-500 dark:text-gray-400">Tổng phí dự kiến:</span>
-                                <span className="font-bold text-lg text-pru-red dark:text-red-400 ml-2">{(formData.mainProduct.fee + formData.riders.reduce((s,r) => s + r.fee, 0)).toLocaleString()} đ</span>
+                                <span className="font-bold text-lg text-pru-red dark:text-red-400 ml-2">{(formData.mainProduct.fee + formData.riders.reduce((s,r) => s + r.fee, 0) + (formData.issuanceType === IssuanceType.CONDITIONAL ? formData.loadingFee || 0 : 0)).toLocaleString()} đ</span>
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>

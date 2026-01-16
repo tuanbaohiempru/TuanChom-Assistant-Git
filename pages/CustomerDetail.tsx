@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, PersonalityType, RelationshipType, ContractStatus } from '../types';
+import { Customer, Contract, InteractionType, TimelineItem, ClaimRecord, ClaimStatus, CustomerDocument, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, PersonalityType, RelationshipType, ContractStatus, IssuanceType } from '../types';
 import { formatDateVN, CurrencyInput, SearchableCustomerSelect } from '../components/Shared';
 import { uploadFile } from '../services/storage';
 
@@ -332,8 +332,10 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                     {/* TAB: CONTRACTS */}
                     {activeTab === 'contracts' && (
                         <div className="grid grid-cols-1 gap-4">
-                            {customerContracts.map(c => (
-                                <div key={c.id} className="bg-white dark:bg-pru-card p-5 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition">
+                            {customerContracts.map(c => {
+                                const isConditional = c.issuanceType === IssuanceType.CONDITIONAL;
+                                return (
+                                <div key={c.id} className={`bg-white dark:bg-pru-card p-5 rounded-xl border ${isConditional ? 'border-orange-200 dark:border-orange-800' : 'border-gray-100 dark:border-gray-800'} shadow-sm hover:shadow-md transition`}>
                                     <div className="flex justify-between items-start mb-4 border-b border-gray-100 dark:border-gray-800 pb-3">
                                         <div>
                                             <h3 className="font-bold text-lg text-pru-red">{c.contractNumber}</h3>
@@ -358,6 +360,24 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                             <span className="font-bold text-gray-800 dark:text-gray-200">{c.totalFee.toLocaleString()} đ</span>
                                         </div>
                                     </div>
+                                    
+                                    {/* EXCLUSION / LOADING WARNING */}
+                                    {isConditional && (
+                                        <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/10 rounded-lg border border-orange-200 dark:border-orange-800">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <i className="fas fa-exclamation-triangle text-orange-600"></i>
+                                                <span className="text-xs font-bold text-orange-700 dark:text-orange-400 uppercase">Thư thỏa thuận áp dụng</span>
+                                            </div>
+                                            {c.loadingFee ? <p className="text-xs text-gray-700 dark:text-gray-300">• Phí tăng: <span className="font-bold">{c.loadingFee.toLocaleString()} đ</span></p> : null}
+                                            {c.exclusionNote && <p className="text-xs text-gray-700 dark:text-gray-300 mt-1">• <span className="font-medium">Nội dung loại trừ:</span> {c.exclusionNote}</p>}
+                                            {c.decisionLetterUrl && (
+                                                <a href={c.decisionLetterUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-500 underline mt-2 inline-block">
+                                                    <i className="fas fa-paperclip mr-1"></i>Xem thư quyết định
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {c.riders.length > 0 && (
                                         <div className="mt-4 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700">
                                             <p className="text-xs font-bold text-gray-400 uppercase mb-2">Sản phẩm bổ trợ ({c.riders.length})</p>
@@ -372,7 +392,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                            )})}
                             {customerContracts.length === 0 && <div className="p-10 text-center text-gray-400 bg-white dark:bg-pru-card rounded-xl">Chưa có hợp đồng nào.</div>}
                         </div>
                     )}

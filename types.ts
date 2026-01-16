@@ -324,6 +324,12 @@ export enum PaymentFrequency {
   MONTHLY = 'Tháng'
 }
 
+// --- NEW ENUM FOR UNDERWRITING DECISION ---
+export enum IssuanceType {
+  STANDARD = 'Phí chuẩn',
+  CONDITIONAL = 'Có điều kiện (Tăng phí/Loại trừ)'
+}
+
 export interface Contract {
   id: string;
   contractNumber: string;
@@ -336,6 +342,12 @@ export interface Contract {
   nextPaymentDate: string;
   status: ContractStatus;
   beneficiary?: string; 
+  
+  // Underwriting Details
+  issuanceType?: IssuanceType; // Default is STANDARD
+  loadingFee?: number; // Số tiền tăng phí
+  exclusionNote?: string; // Nội dung loại trừ
+  decisionLetterUrl?: string; // Link file thư thỏa thuận
 }
 
 export interface Illustration {

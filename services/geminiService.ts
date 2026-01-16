@@ -2,7 +2,7 @@
 import { httpsCallable, Functions } from "firebase/functions";
 import { functions, isFirebaseReady } from "./firebaseConfig";
 import { GoogleGenAI, Type, FunctionDeclaration, Tool, FunctionCall } from "@google/genai";
-import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Appointment, AppointmentStatus, AppointmentType, InteractionType, TimelineItem } from "../types";
+import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Appointment, AppointmentStatus, AppointmentType, InteractionType, TimelineItem, IssuanceType } from "../types";
 import { addData, updateData, COLLECTIONS } from "./db";
 
 // Initialize Client-side AI (Fallback)
@@ -239,6 +239,19 @@ const findRelevantContext = (query: string, state: AppState): string => {
             context += `   - Năm sinh: ${new Date(c.dob).getFullYear()}, Giới tính: ${c.gender}\n`;
             context += `   - SĐT: ${c.phone}\n`;
             
+            // Add Contracts with WARNINGS for Exclusions
+            const customerContracts = state.contracts.filter(ct => ct.customerId === c.id);
+            if (customerContracts.length > 0) {
+                context += `   - Danh sách Hợp đồng:\n`;
+                customerContracts.forEach(ct => {
+                    let warning = "";
+                    if (ct.issuanceType === IssuanceType.CONDITIONAL) {
+                        warning = `[⚠️ CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${ct.exclusionNote || 'Không rõ'}". Tăng phí: ${ct.loadingFee || 0}đ]`;
+                    }
+                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status}) - ${ct.mainProduct.productName}. ${warning}\n`;
+                });
+            }
+
             if (c.timeline && c.timeline.length > 0) {
                 const sortedTimeline = [...c.timeline].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                 context += `   - Lịch sử tương tác gần nhất:\n`;
@@ -284,7 +297,11 @@ export const chatWithData = async (
     QUYỀN HẠN & CÔNG CỤ:
     - Bạn có quyền TRUY CẬP dữ liệu khách hàng (xem context bên dưới).
     - Bạn có quyền GHI LẠI (Lưu) tương tác và TẠO LỊCH HẸN bằng cách gọi hàm (function calling).
-    - Nếu người dùng yêu cầu "Lưu lại", "Ghi chú lại", "Tạo lịch hẹn", "Nhắc tôi...", HÃY GỌI HÀM TƯƠNG ỨNG ngay lập tức. Đừng chỉ nói suông.
+    - Nếu người dùng yêu cầu "Lưu lại", "Ghi chú lại", "Tạo lịch hẹn", "Nhắc tôi...", HÃY GỌI HÀM TƯƠNGỨNG ngay lập tức. Đừng chỉ nói suông.
+    
+    QUY TẮC QUAN TRỌNG VỀ LOẠI TRỪ (EXCLUSIONS):
+    - Khi trả lời về quyền lợi chi trả (Claim), BẮT BUỘC phải kiểm tra xem Hợp đồng có ghi chú [CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN] không.
+    - Nếu có Loại trừ, bạn PHẢI cảnh báo người dùng rằng bệnh/rủi ro này có thể không được chi trả do điều khoản loại trừ.
     
     DỮ LIỆU KHÁCH HÀNG & BỐI CẢNH:
     ${specificContext}
@@ -394,7 +411,13 @@ export const consultantChat = async (
     `;
 
     const contractInfo = contracts.length > 0 
-        ? contracts.map(c => `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status}). Phí: ${c.totalFee.toLocaleString()}đ`).join('\n') 
+        ? contracts.map(c => {
+            let info = `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status}). Phí: ${c.totalFee.toLocaleString()}đ`;
+            if (c.issuanceType === IssuanceType.CONDITIONAL) {
+                info += `\n  ⚠️ LƯU Ý QUAN TRỌNG: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${c.exclusionNote}". Tăng phí: ${c.loadingFee}đ.`;
+            }
+            return info;
+        }).join('\n') 
         : "Chưa có hợp đồng nào.";
     
     const familyInfo = familyContext.length > 0
@@ -416,7 +439,8 @@ export const consultantChat = async (
     ${roleplayMode === 'consultant' ? agentContext : ''}
     ${customerContext}
     THÔNG TIN BỔ SUNG:
-    - Hợp đồng hiện tại: ${contractInfo}
+    - Hợp đồng hiện tại (Chú ý các điều khoản loại trừ nếu có): 
+    ${contractInfo}
     - Gia đình: ${familyInfo}
     ${planContext}
     MỤC TIÊU: ${conversationGoal}
