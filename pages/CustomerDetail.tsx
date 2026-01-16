@@ -31,6 +31,8 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
     const [newInteraction, setNewInteraction] = useState<{type: InteractionType, content: string, title: string, date: string}>({
         type: InteractionType.NOTE, content: '', title: '', date: new Date().toISOString().split('T')[0]
     });
+    // Add Delete Confirm State for Timeline
+    const [timelineDeleteId, setTimelineDeleteId] = useState<string | null>(null);
 
     // New Claim State
     const [isAddingClaim, setIsAddingClaim] = useState(false);
@@ -123,6 +125,21 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         await onUpdateCustomer(updatedCustomer);
         // Reset form but keep date as today for convenience next time
         setNewInteraction({type: InteractionType.NOTE, content: '', title: '', date: new Date().toISOString().split('T')[0]});
+    };
+
+    const handleDeleteTimelineItem = async () => {
+        if (!timelineDeleteId || !customer.timeline) return;
+
+        // Filter out the item to be deleted
+        const updatedTimeline = customer.timeline.filter(item => item.id !== timelineDeleteId);
+
+        const updatedCustomer = {
+            ...customer,
+            timeline: updatedTimeline
+        };
+
+        await onUpdateCustomer(updatedCustomer);
+        setTimelineDeleteId(null);
     };
 
     const handleAddClaim = async () => {
@@ -297,31 +314,48 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                             <div className="space-y-0 relative">
                                 <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
                                 {virtualTimeline.length > 0 ? (
-                                    virtualTimeline.map((item, idx) => (
-                                        <div key={idx} className="relative pl-16 pb-8 last:pb-0 group">
-                                            <div className={`absolute left-2 w-9 h-9 rounded-full border-4 border-white dark:border-pru-card flex items-center justify-center shadow-sm z-10 ${getTimelineIcon(item.type)}`}>
-                                                <i className={`fas ${item.type === InteractionType.CALL ? 'fa-phone' : item.type === InteractionType.CLAIM ? 'fa-heartbeat' : item.type === InteractionType.CONTRACT ? 'fa-file-signature' : item.type === InteractionType.SYSTEM ? 'fa-exclamation' : 'fa-sticky-note'} text-xs`}></i>
-                                            </div>
-                                            <div className="bg-gray-50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:shadow-md transition">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">
-                                                        {formatDateVN(item.date)} • {item.type}
-                                                    </span>
-                                                    {item.result && (
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                                                            item.type === InteractionType.SYSTEM ? 'bg-red-100 text-red-700' :
-                                                            item.type === InteractionType.CONTRACT ? 'bg-green-100 text-green-700' :
-                                                            'bg-blue-100 text-blue-700'
-                                                        }`}>
-                                                            {item.result}
-                                                        </span>
-                                                    )}
+                                    virtualTimeline.map((item, idx) => {
+                                        // Check if this item exists in the customer.timeline array (Manual Item)
+                                        const isManualItem = customer.timeline?.some(t => t.id === item.id);
+
+                                        return (
+                                            <div key={idx} className="relative pl-16 pb-8 last:pb-0 group">
+                                                <div className={`absolute left-2 w-9 h-9 rounded-full border-4 border-white dark:border-pru-card flex items-center justify-center shadow-sm z-10 ${getTimelineIcon(item.type)}`}>
+                                                    <i className={`fas ${item.type === InteractionType.CALL ? 'fa-phone' : item.type === InteractionType.CLAIM ? 'fa-heartbeat' : item.type === InteractionType.CONTRACT ? 'fa-file-signature' : item.type === InteractionType.SYSTEM ? 'fa-exclamation' : 'fa-sticky-note'} text-xs`}></i>
                                                 </div>
-                                                <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">{item.title}</h4>
-                                                <p className="text-gray-600 dark:text-gray-400 text-sm whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                                                <div className="bg-gray-50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:shadow-md transition relative">
+                                                    
+                                                    {/* DELETE BUTTON FOR MANUAL ITEMS */}
+                                                    {isManualItem && (
+                                                        <button 
+                                                            onClick={() => setTimelineDeleteId(item.id)}
+                                                            className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            title="Xóa tương tác này"
+                                                        >
+                                                            <i className="fas fa-trash-alt text-xs"></i>
+                                                        </button>
+                                                    )}
+
+                                                    <div className="flex justify-between items-start mb-2 pr-6">
+                                                        <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">
+                                                            {formatDateVN(item.date)} • {item.type}
+                                                        </span>
+                                                        {item.result && (
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                                                item.type === InteractionType.SYSTEM ? 'bg-red-100 text-red-700' :
+                                                                item.type === InteractionType.CONTRACT ? 'bg-green-100 text-green-700' :
+                                                                'bg-blue-100 text-blue-700'
+                                                            }`}>
+                                                                {item.result}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-1">{item.title}</h4>
+                                                    <p className="text-gray-600 dark:text-gray-400 text-sm whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 ) : (
                                     <div className="text-center py-10 text-gray-400 italic">Chưa có lịch sử tương tác nào.</div>
                                 )}
@@ -605,6 +639,23 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                     </div>
                 </div>
             </div>
+
+            {/* Timeline Delete Confirmation Modal */}
+            {timelineDeleteId && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-white dark:bg-pru-card rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+                        <div className="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">
+                            <i className="fas fa-trash-alt"></i>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">Xóa tương tác này?</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Bạn có chắc chắn muốn xóa ghi chú này khỏi dòng thời gian không?</p>
+                        <div className="flex gap-3 justify-center">
+                            <button onClick={() => setTimelineDeleteId(null)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-bold">Hủy</button>
+                            <button onClick={handleDeleteTimelineItem} className="px-4 py-2 bg-red-500 text-white rounded-xl font-bold shadow-lg shadow-red-500/30">Xóa</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* EDIT PROFILE MODAL */}
             {isEditModalOpen && (
