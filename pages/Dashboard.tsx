@@ -14,6 +14,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
   const { customers, contracts, appointments, agentProfile } = state;
   const [activeTab, setActiveTab] = useState<'tasks' | 'pending'>('tasks');
   
+  // --- NEW: Search & Filter State ---
+  const [taskSearchTerm, setTaskSearchTerm] = useState('');
+  const [taskFilterType, setTaskFilterType] = useState<string>('all');
+
   // Action Modal State
   const [actionModal, setActionModal] = useState<{isOpen: boolean, type: 'call' | 'zalo', customer: Customer | null, content?: string}>({
       isOpen: false, type: 'call', customer: null
@@ -168,7 +172,6 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         .forEach(a => {
             const customer = customers.find(c => c.id === a.customerId);
             const isToday = a.date === today.toISOString().split('T')[0];
-            // If not today, show Date + Time
             const timeDisplay = isToday ? a.time : `${formatDateVN(a.date)} ${a.time}`;
             
             tasks.push({
@@ -190,7 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         const diff = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 3600 * 24));
         
         if (diff >= 0 && diff <= 10) {
-             const bdayStr = formatDateVN(nextBday.toISOString().split('T')[0]).substring(0, 5); // dd/mm
+             const bdayStr = formatDateVN(nextBday.toISOString().split('T')[0]).substring(0, 5);
              tasks.push({
                 id: `bday-${c.id}`, type: 'normal',
                 title: `Sinh nhật ${c.fullName} ${diff === 0 ? 'hôm nay' : `(${bdayStr})`}`,
@@ -207,20 +210,35 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
 
   }, [customers, contracts, appointments]);
 
-  // --- 2.5 PENDING APPOINTMENTS (ALL Unconfirmed) ---
+  // --- 2.5 PENDING APPOINTMENTS (ALL Unconfirmed with SEARCH & FILTER) ---
   const pendingAppointments = useMemo(() => {
       const now = new Date();
       now.setHours(0,0,0,0);
 
-      return appointments
-          .filter(a => a.status === AppointmentStatus.UPCOMING)
-          .sort((a, b) => {
-              // Sort by Date ASC (Oldest first for overdue)
-              const dateA = new Date(`${a.date}T${a.time}`);
-              const dateB = new Date(`${b.date}T${b.time}`);
-              return dateA.getTime() - dateB.getTime();
-          });
-  }, [appointments]);
+      // 1. Base Filter
+      let filtered = appointments.filter(a => a.status === AppointmentStatus.UPCOMING);
+
+      // 2. Search Text
+      if (taskSearchTerm) {
+          const lower = taskSearchTerm.toLowerCase();
+          filtered = filtered.filter(a => 
+              a.customerName.toLowerCase().includes(lower) || 
+              (a.note && a.note.toLowerCase().includes(lower))
+          );
+      }
+
+      // 3. Filter Type
+      if (taskFilterType !== 'all') {
+          filtered = filtered.filter(a => a.type === taskFilterType);
+      }
+
+      // 4. Sort Date ASC (Overdue first)
+      return filtered.sort((a, b) => {
+          const dateA = new Date(`${a.date}T${a.time}`);
+          const dateB = new Date(`${b.date}T${b.time}`);
+          return dateA.getTime() - dateB.getTime();
+      });
+  }, [appointments, taskSearchTerm, taskFilterType]);
 
   // --- 3. CHART DATA ---
   const chartData = useMemo(() => {
@@ -278,34 +296,10 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <GoalCard 
-              title="Tuần này" 
-              actual={salesMetrics.actual.week} 
-              target={salesMetrics.targets.weekly} 
-              icon="fa-calendar-week" 
-              color="blue" 
-          />
-          <GoalCard 
-              title="Tháng này" 
-              actual={salesMetrics.actual.month} 
-              target={salesMetrics.targets.monthly} 
-              icon="fa-calendar-alt" 
-              color="green" 
-          />
-          <GoalCard 
-              title="Quý này" 
-              actual={salesMetrics.actual.quarter} 
-              target={salesMetrics.targets.quarterly} 
-              icon="fa-chart-pie" 
-              color="orange" 
-          />
-          <GoalCard 
-              title="Năm nay" 
-              actual={salesMetrics.actual.year} 
-              target={salesMetrics.targets.yearly} 
-              icon="fa-trophy" 
-              color="red" 
-          />
+          <GoalCard title="Tuần này" actual={salesMetrics.actual.week} target={salesMetrics.targets.weekly} icon="fa-calendar-week" color="blue" />
+          <GoalCard title="Tháng này" actual={salesMetrics.actual.month} target={salesMetrics.targets.monthly} icon="fa-calendar-alt" color="green" />
+          <GoalCard title="Quý này" actual={salesMetrics.actual.quarter} target={salesMetrics.targets.quarterly} icon="fa-chart-pie" color="orange" />
+          <GoalCard title="Năm nay" actual={salesMetrics.actual.year} target={salesMetrics.targets.yearly} icon="fa-trophy" color="red" />
       </div>
 
       {/* 2. MAIN LAYOUT */}
@@ -313,6 +307,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
         
         {/* LEFT COL: ACTION CENTER */}
         <div className="lg:col-span-2 bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col min-h-[500px] transition-colors">
+            {/* TABS */}
             <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 pt-4">
                 <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
                     <i className="fas fa-tasks mr-2"></i>Việc cần làm (10 ngày tới)
@@ -353,50 +348,77 @@ const Dashboard: React.FC<DashboardProps> = ({ state }) => {
                         )}
                     </div>
                 ) : (
-                    // PENDING / ALL UPCOMING TAB
-                    <div className="space-y-3">
-                        {pendingAppointments.length > 0 ? (
-                            pendingAppointments.map(appt => {
-                                const now = new Date();
-                                const apptDate = new Date(`${appt.date}T${appt.time}`);
-                                const isOverdue = apptDate < now;
-                                const customer = customers.find(c => c.id === appt.customerId);
-
-                                return (
-                                    <div key={appt.id} className={`p-4 rounded-xl border shadow-sm flex items-center gap-4 transition group ${isOverdue ? 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white border-gray-100 dark:bg-pru-dark/50 dark:border-gray-800'}`}>
-                                        {/* Icon */}
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
-                                            <i className={`fas ${getTaskIcon(appt.type)}`}></i> 
-                                        </div>
-                                        
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start">
-                                                <h4 className={`font-bold text-sm ${isOverdue ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                                                    {appt.customerName}
-                                                </h4>
-                                                {isOverdue && <span className="text-[10px] font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded shadow-sm">Quá hạn</span>}
-                                            </div>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
-                                                {appt.type} • {formatDateVN(appt.date)} lúc {appt.time}
-                                            </p>
-                                            {appt.note && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1 border-l-2 border-gray-200 pl-2">{appt.note}</p>}
-                                        </div>
-
-                                        {/* Actions */}
-                                        <div className="flex gap-2">
-                                            <Link to="/appointments" className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-pru-red hover:text-white transition">
-                                                <i className="fas fa-arrow-right text-xs"></i>
-                                            </Link>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                                <i className="fas fa-check-double text-4xl mb-2 opacity-50"></i>
-                                <p>Không có công việc nào tồn đọng.</p>
+                    // PENDING / ALL UPCOMING TAB WITH SEARCH & FILTER
+                    <div className="space-y-4">
+                        {/* SEARCH & FILTER CONTROLS */}
+                        <div className="flex flex-col md:flex-row gap-3">
+                            <div className="relative flex-1">
+                                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                <input 
+                                    className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pru-red" 
+                                    placeholder="Tìm tên hoặc ghi chú..." 
+                                    value={taskSearchTerm}
+                                    onChange={(e) => setTaskSearchTerm(e.target.value)}
+                                />
                             </div>
-                        )}
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                <button onClick={() => setTaskFilterType('all')} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition border ${taskFilterType === 'all' ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-900 text-gray-500 border-gray-200 dark:border-gray-700'}`}>Tất cả</button>
+                                {Object.values(AppointmentType).map(t => (
+                                    <button key={t} onClick={() => setTaskFilterType(t)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition border ${taskFilterType === t ? 'bg-pru-red text-white border-pru-red' : 'bg-white dark:bg-gray-900 text-gray-500 border-gray-200 dark:border-gray-700'}`}>{t}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* LIST */}
+                        <div className="space-y-3">
+                            {pendingAppointments.length > 0 ? (
+                                pendingAppointments.map(appt => {
+                                    const now = new Date();
+                                    const apptDate = new Date(`${appt.date}T${appt.time}`);
+                                    const isOverdue = apptDate < now;
+
+                                    return (
+                                        <div key={appt.id} className={`p-4 rounded-xl border shadow-sm flex items-center gap-4 transition group ${isOverdue ? 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white border-gray-100 dark:bg-pru-dark/50 dark:border-gray-800'}`}>
+                                            {/* Icon */}
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                                                <i className={`fas ${getTaskIcon(appt.type)}`}></i> 
+                                            </div>
+                                            
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className={`font-bold text-sm ${isOverdue ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                                        {appt.customerName}
+                                                    </h4>
+                                                    {isOverdue && <span className="text-[10px] font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded shadow-sm">Quá hạn</span>}
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
+                                                    {appt.type} • {formatDateVN(appt.date)} lúc {appt.time}
+                                                </p>
+                                                {appt.note && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1 border-l-2 border-gray-200 pl-2">{appt.note}</p>}
+                                            </div>
+
+                                            {/* Actions */}
+                                            <div className="flex gap-2">
+                                                {/* PASSING STATE: focusDate to automatically navigate calendar */}
+                                                <Link 
+                                                    to="/appointments" 
+                                                    state={{ focusDate: appt.date }}
+                                                    className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-pru-red hover:text-white transition"
+                                                    title="Xem trên lịch"
+                                                >
+                                                    <i className="fas fa-calendar-alt text-xs"></i>
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+                                    <i className="fas fa-check-double text-3xl mb-2 opacity-50"></i>
+                                    <p className="text-sm">Không tìm thấy công việc nào.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

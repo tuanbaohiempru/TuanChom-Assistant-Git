@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Appointment, Customer, AppointmentStatus, AppointmentType, Contract, AppointmentResult, ContractStatus } from '../types';
 import { ConfirmModal, SearchableCustomerSelect, formatDateVN } from '../components/Shared';
+import { useLocation } from 'react-router-dom';
 
 interface AppointmentsPageProps {
     appointments: Appointment[];
@@ -13,11 +14,23 @@ interface AppointmentsPageProps {
 }
 
 const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, customers, contracts, onAdd, onUpdate, onDelete }) => {
+    const location = useLocation();
+    
     // --- STATE ---
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [isMonthExpanded, setIsMonthExpanded] = useState(false); // Collapsible calendar for mobile
     
+    // Handle Navigation State from Dashboard
+    useEffect(() => {
+        if (location.state && location.state.focusDate) {
+            const focusDate = new Date(location.state.focusDate);
+            setSelectedDate(location.state.focusDate);
+            setCurrentDate(focusDate); // Ensure calendar switches to that month
+            setIsMonthExpanded(false); // Collapse to show agenda
+        }
+    }, [location.state]);
+
     // Modals
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -200,7 +213,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, custo
                             const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                             const isSelected = selectedDate === dateStr;
                             const isToday = new Date().toISOString().split('T')[0] === dateStr;
-                            const hasApps = appointments.some(a => a.date === dateStr);
+                            // Check for events
+                            const daysEvents = appointments.filter(a => a.date === dateStr);
+                            const hasPending = daysEvents.some(a => a.status === AppointmentStatus.UPCOMING);
+                            const hasCompleted = daysEvents.some(a => a.status === AppointmentStatus.COMPLETED);
                             
                             return (
                                 <button 
@@ -213,7 +229,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, custo
                                     }`}
                                 >
                                     <span className="text-sm font-bold">{d}</span>
-                                    {hasApps && !isSelected && <div className="w-1 h-1 bg-pru-red rounded-full mt-0.5"></div>}
+                                    {/* Event Indicators */}
+                                    <div className="flex gap-0.5 mt-0.5">
+                                        {hasPending && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-red-500'}`}></div>}
+                                        {!hasPending && hasCompleted && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`}></div>}
+                                    </div>
                                 </button>
                             );
                         })}
@@ -228,7 +248,11 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, custo
                         const dateStr = d.toISOString().split('T')[0];
                         const isSelected = selectedDate === dateStr;
                         const isToday = new Date().toISOString().split('T')[0] === dateStr;
-                        const hasApps = appointments.some(a => a.date === dateStr);
+                        
+                        const daysEvents = appointments.filter(a => a.date === dateStr);
+                        const hasPending = daysEvents.some(a => a.status === AppointmentStatus.UPCOMING);
+                        const hasCompleted = daysEvents.some(a => a.status === AppointmentStatus.COMPLETED);
+                        
                         const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
                         return (
@@ -241,7 +265,10 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, custo
                             >
                                 <span className="text-[10px] uppercase mb-1 font-bold">{dayNames[d.getDay()]}</span>
                                 <span className={`text-sm font-black ${isToday && !isSelected ? 'text-pru-red' : ''}`}>{d.getDate()}</span>
-                                {hasApps && !isSelected && <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>}
+                                <div className="flex gap-0.5 mt-1 h-1.5">
+                                    {hasPending && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-red-500'}`}></div>}
+                                    {!hasPending && hasCompleted && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`}></div>}
+                                </div>
                             </button>
                         );
                     })}
@@ -262,13 +289,22 @@ const AppointmentsPage: React.FC<AppointmentsPageProps> = ({ appointments, custo
                                 const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                                 const isSelected = selectedDate === dateStr;
                                 const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                                
+                                const daysEvents = appointments.filter(a => a.date === dateStr);
+                                const hasPending = daysEvents.some(a => a.status === AppointmentStatus.UPCOMING);
+                                const hasCompleted = daysEvents.some(a => a.status === AppointmentStatus.COMPLETED);
+
                                 return (
-                                    <button key={d} onClick={() => setSelectedDate(dateStr)} className={`h-10 rounded-lg text-sm font-bold flex items-center justify-center transition-all ${
+                                    <button key={d} onClick={() => setSelectedDate(dateStr)} className={`h-10 rounded-lg text-sm font-bold flex flex-col items-center justify-center transition-all ${
                                         isSelected ? 'bg-pru-red text-white shadow-md' : 
                                         isToday ? 'text-pru-red bg-red-50 dark:bg-red-900/30' : 
                                         'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                                     }`}>
-                                        {d}
+                                        <span>{d}</span>
+                                        <div className="flex gap-0.5 mt-0.5">
+                                            {hasPending && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-red-500'}`}></div>}
+                                            {!hasPending && hasCompleted && <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`}></div>}
+                                        </div>
                                     </button>
                                 );
                             })}
