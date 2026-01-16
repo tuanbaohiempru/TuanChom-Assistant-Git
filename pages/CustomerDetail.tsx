@@ -99,9 +99,15 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
     const handleAddTimeline = async () => {
         if (!newInteraction.content) return alert("Vui lòng nhập nội dung");
         
+        // Construct date object from input to preserve the chosen date
+        const chosenDate = new Date(newInteraction.date);
+        // Add current time components to avoid everything being at 00:00:00 (helps sorting if added same day)
+        const now = new Date();
+        chosenDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+
         const newItem: TimelineItem = {
             id: Date.now().toString(),
-            date: new Date().toISOString(), // Use Current Time for precise ordering
+            date: chosenDate.toISOString(), // Use chosen date
             type: newInteraction.type,
             title: newInteraction.title || newInteraction.type,
             content: newInteraction.content,
@@ -115,6 +121,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
         };
 
         await onUpdateCustomer(updatedCustomer);
+        // Reset form but keep date as today for convenience next time
         setNewInteraction({type: InteractionType.NOTE, content: '', title: '', date: new Date().toISOString().split('T')[0]});
     };
 
@@ -252,18 +259,27 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                         <div className="bg-white dark:bg-pru-card rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
                             {/* Add Interaction Input */}
                             <div className="mb-8 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                                <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
-                                    {Object.values(InteractionType).filter(t => t !== InteractionType.SYSTEM).map(t => (
-                                        <button 
-                                            key={t}
-                                            onClick={() => setNewInteraction({...newInteraction, type: t})}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${newInteraction.type === t ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'}`}
-                                        >
-                                            {t}
-                                        </button>
-                                    ))}
+                                <div className="flex justify-between items-center mb-3">
+                                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                                        {Object.values(InteractionType).filter(t => t !== InteractionType.SYSTEM).map(t => (
+                                            <button 
+                                                key={t}
+                                                onClick={() => setNewInteraction({...newInteraction, type: t})}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${newInteraction.type === t ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'}`}
+                                            >
+                                                {t}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="flex gap-3">
+                                
+                                <div className="flex flex-col md:flex-row gap-3">
+                                    <input 
+                                        type="date"
+                                        className="w-full md:w-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-pru-red/20 text-gray-600 dark:text-gray-300"
+                                        value={newInteraction.date}
+                                        onChange={e => setNewInteraction({...newInteraction, date: e.target.value})}
+                                    />
                                     <input 
                                         className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pru-red/20"
                                         placeholder={`Ghi chú cho ${newInteraction.type}...`}
@@ -271,7 +287,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                         onChange={e => setNewInteraction({...newInteraction, content: e.target.value})}
                                         onKeyDown={e => e.key === 'Enter' && handleAddTimeline()}
                                     />
-                                    <button onClick={handleAddTimeline} className="w-12 h-12 bg-pru-red text-white rounded-xl shadow-md hover:bg-red-700 transition flex items-center justify-center">
+                                    <button onClick={handleAddTimeline} className="w-12 h-12 bg-pru-red text-white rounded-xl shadow-md hover:bg-red-700 transition flex items-center justify-center flex-shrink-0">
                                         <i className="fas fa-paper-plane"></i>
                                     </button>
                                 </div>
@@ -289,7 +305,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customers, contracts, o
                                             <div className="bg-gray-50 dark:bg-gray-800/30 p-4 rounded-xl border border-gray-100 dark:border-gray-800 hover:shadow-md transition">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">
-                                                        {new Date(item.date).toLocaleString('vi-VN').split(',')[0]} • {item.type}
+                                                        {formatDateVN(item.date)} • {item.type}
                                                     </span>
                                                     {item.result && (
                                                         <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
