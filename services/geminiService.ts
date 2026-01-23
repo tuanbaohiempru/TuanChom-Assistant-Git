@@ -2,39 +2,92 @@
 import { httpsCallable, Functions } from "firebase/functions";
 import { functions, isFirebaseReady } from "./firebaseConfig";
 import { GoogleGenAI, Type, FunctionDeclaration, Tool, FunctionCall } from "@google/genai";
-import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Appointment, AppointmentStatus, AppointmentType, InteractionType, TimelineItem, IssuanceType } from "../types";
+import { AppState, Customer, AgentProfile, Contract, ProductStatus, PlanResult, Appointment, AppointmentStatus, AppointmentType, InteractionType, TimelineItem, IssuanceType, Gender } from "../types";
 import { addData, updateData, COLLECTIONS } from "./db";
-import { HTVK_BENEFITS } from "../data/pruHanhTrangVuiKhoe"; // IMPORT HTVK DATA
+import { HTVK_BENEFITS } from "../data/pruHanhTrangVuiKhoe";
 
-// Initialize Client-side AI (Fallback)
+// --- CONFIGURATION ---
 const getApiKey = (): string => {
     const envKey = process.env.API_KEY as string | undefined;
-    if (envKey && typeof envKey === 'string' && envKey.length > 0) {
-        return envKey;
-    }
+    if (envKey && typeof envKey === 'string' && envKey.length > 0) return envKey;
     return localStorage.getItem('gemini_api_key') || '';
 };
 
 const apiKey = getApiKey();
 const clientAI = apiKey ? new GoogleGenAI({ apiKey }) : null;
-
 let isServerAvailable = isFirebaseReady;
 
-// MODEL CONFIG
 const DEFAULT_MODEL = 'gemini-3-flash-preview'; 
+const VISION_MODEL = 'gemini-2.5-flash-image';
 
-// --- TOOL DEFINITIONS (FUNCTION CALLING) ---
+// --- SYSTEM PROMPTS (THE BRAINS) ---
+const PROMPTS = {
+    // 0. VAI TRÒ: BỘ ĐIỀU PHỐI (ROUTER) - PHASE 2
+    ROUTER: `
+    VAI TRÒ: Bạn là AI Router - Bộ phân loại ý định người dùng.
+    NHIỆM VỤ: Phân tích câu hỏi đầu vào và quyết định AI chuyên gia nào sẽ xử lý tốt nhất.
+    
+    CÁC CHUYÊN GIA:
+    1. "EXPERT": Các câu hỏi về dữ liệu, tra cứu hợp đồng, quyền lợi sản phẩm, tính toán phí, luật bảo hiểm. (VD: "Phí đóng bao nhiêu?", "Hợp đồng này còn hiệu lực không?")
+    2. "COACH": Các câu hỏi về kỹ năng mềm, xử lý từ chối, tâm lý khách hàng, roleplay. (VD: "Khách chê đắt quá", "Làm sao để mở lời?")
+    3. "CREATOR": Yêu cầu viết nội dung, status Facebook, email, kể chuyện, marketing. (VD: "Viết bài chúc mừng sinh nhật", "Viết status về ung thư")
+    4. "ADMIN": Các mệnh lệnh hành động cụ thể như đặt lịch, lưu ghi chú, tìm kiếm thông tin cá nhân. (VD: "Lưu lịch hẹn", "Tìm sđt của khách A")
 
+    OUTPUT JSON: { "target": "EXPERT" | "COACH" | "CREATOR" | "ADMIN", "reason": "Lý do chọn" }
+    `,
+
+    // 1. VAI TRÒ: THƯ KÝ & QUẢN TRỊ (Xử lý dữ liệu thô, giọng nói)
+    ADMIN: `
+    VAI TRÒ: Bạn là "Admin" - Thư ký số hóa dữ liệu.
+    NHIỆM VỤ: Phân tích văn bản/giọng nói để trích xuất dữ liệu chính xác hoặc thực hiện Tool Call.
+    
+    KỸ NĂNG:
+    - Nhận diện ngày tháng thông minh.
+    - Fuzzy matching tên khách hàng.
+    - Gọi function 'save_interaction' hoặc 'create_appointment' nếu người dùng yêu cầu lưu trữ.
+    `,
+
+    // 2. VAI TRÒ: CHUYÊN GIA NGHIỆP VỤ (Tra cứu, Hợp đồng, Sản phẩm)
+    EXPERT: `
+    VAI TRÒ: Bạn là "TuanChom" - Chuyên gia Nghiệp vụ & Sản phẩm Prudential.
+    NHIỆM VỤ: Hỗ trợ tra cứu thông tin hợp đồng, quyền lợi sản phẩm và điều khoản loại trừ dựa trên Context được cung cấp.
+    
+    PHONG CÁCH:
+    - Chuyên nghiệp, ngắn gọn, chính xác tuyệt đối theo dữ liệu.
+    - Luôn trích dẫn số liệu (Số HĐ, Số tiền bảo hiểm, Ngày đóng phí).
+    - Nếu không tìm thấy thông tin trong Context, hãy nói "Tôi không tìm thấy thông tin này trong hồ sơ". KHÔNG ĐƯỢC BỊA RA.
+    `,
+
+    // 3. VAI TRÒ: HUẤN LUYỆN VIÊN (Roleplay, Tâm lý, Soft Skills)
+    COACH: `
+    VAI TRÒ: Bạn là "SUSAM" - Siêu Trợ lý MDRT & Chuyên gia Tâm lý hành vi.
+    NHIỆM VỤ: Tư vấn cách ứng xử, kỹ năng bán hàng, hoặc đóng vai khách hàng để luyện tập.
+    
+    PHONG CÁCH:
+    - Sắc sảo, thấu cảm, truyền cảm hứng.
+    - Đưa ra lời khuyên thực chiến (Actionable advice).
+    - Cấu trúc phản hồi: Insight -> Action -> Script mẫu.
+    `,
+
+    // 4. VAI TRÒ: SÁNG TẠO NỘI DUNG (Marketing)
+    CREATOR: `
+    VAI TRÒ: Bạn là Chuyên gia Content Marketing ngành Bảo hiểm.
+    NHIỆM VỤ: Viết bài đăng Facebook, Zalo, Storytelling thu hút.
+    PHONG CÁCH: Tùy biến (Hài hước, Cảm động, Chuyên gia) nhưng phải tuân thủ đạo đức nghề nghiệp.
+    `
+};
+
+// --- TOOL DEFINITIONS ---
 const saveInteractionTool: FunctionDeclaration = {
     name: 'save_interaction',
     description: 'Lưu lịch sử tương tác, ghi chú hoặc kết quả cuộc gọi vào hồ sơ khách hàng.',
     parameters: {
         type: Type.OBJECT,
         properties: {
-            customerId: { type: Type.STRING, description: 'ID của khách hàng (lấy từ dữ liệu ngữ cảnh).' },
-            content: { type: Type.STRING, description: 'Nội dung chi tiết của tương tác hoặc ghi chú.' },
-            type: { type: Type.STRING, description: 'Loại tương tác. Ví dụ: Ghi chú, Cuộc gọi, Gặp mặt, Chat Zalo.' },
-            title: { type: Type.STRING, description: 'Tiêu đề ngắn gọn. Ví dụ: Tư vấn sản phẩm A, Khách hỏi về quyền lợi...' }
+            customerId: { type: Type.STRING, description: 'ID của khách hàng.' },
+            content: { type: Type.STRING, description: 'Nội dung chi tiết.' },
+            type: { type: Type.STRING, description: 'Loại: Ghi chú, Cuộc gọi, Gặp mặt, Chat Zalo.' },
+            title: { type: Type.STRING, description: 'Tiêu đề ngắn gọn.' }
         },
         required: ['customerId', 'content', 'type', 'title']
     }
@@ -42,378 +95,273 @@ const saveInteractionTool: FunctionDeclaration = {
 
 const createAppointmentTool: FunctionDeclaration = {
     name: 'create_appointment',
-    description: 'Tạo lịch hẹn mới hoặc lịch nhắc việc với khách hàng.',
+    description: 'Tạo lịch hẹn mới hoặc lịch nhắc việc.',
     parameters: {
         type: Type.OBJECT,
         properties: {
             customerId: { type: Type.STRING, description: 'ID của khách hàng.' },
             customerName: { type: Type.STRING, description: 'Tên khách hàng.' },
-            date: { type: Type.STRING, description: 'Ngày hẹn định dạng YYYY-MM-DD.' },
-            time: { type: Type.STRING, description: 'Giờ hẹn định dạng HH:mm.' },
-            type: { type: Type.STRING, description: 'Loại lịch hẹn: Tư vấn, Gọi chăm sóc, Nhắc phí, Chúc mừng sinh nhật, Khác.' },
-            note: { type: Type.STRING, description: 'Ghi chú cho lịch hẹn.' }
+            date: { type: Type.STRING, description: 'Ngày hẹn YYYY-MM-DD.' },
+            time: { type: Type.STRING, description: 'Giờ hẹn HH:mm.' },
+            type: { type: Type.STRING, description: 'Loại: Tư vấn, Gọi chăm sóc, Nhắc phí, Sinh nhật.' },
+            note: { type: Type.STRING, description: 'Ghi chú.' }
         },
         required: ['customerId', 'date', 'type']
     }
 };
 
-const appTools: Tool[] = [{
-    functionDeclarations: [saveInteractionTool, createAppointmentTool]
-}];
+const appTools: Tool[] = [{ functionDeclarations: [saveInteractionTool, createAppointmentTool] }];
 
-// --- HELPER TO EXECUTE TOOLS ---
+// --- HELPER FUNCTIONS ---
+
 const executeTool = async (functionCall: FunctionCall, appState: AppState): Promise<any> => {
     const { name, args } = functionCall;
-    console.log(`🛠️ AI Executing Tool: ${name}`, args);
+    console.log(`🛠️ Tool Call: ${name}`, args);
 
     try {
         if (name === 'save_interaction') {
             const { customerId, content, type, title } = args as any;
             const customer = appState.customers.find(c => c.id === customerId);
-            if (!customer) return { result: "Error: Customer ID not found." };
+            if (!customer) return { result: "Error: Customer not found." };
 
             const newItem: TimelineItem = {
                 id: Date.now().toString(),
                 date: new Date().toISOString(),
                 type: type as InteractionType || InteractionType.NOTE,
-                title: title || 'Ghi chú từ AI',
+                title: title || 'Ghi chú AI',
                 content: content,
-                result: 'Lưu bởi AI'
+                result: 'Auto-saved'
             };
-
-            const updatedCustomer = {
+            await updateData(COLLECTIONS.CUSTOMERS, customerId, {
                 ...customer,
                 timeline: [newItem, ...(customer.timeline || [])],
-                interactionHistory: [`${new Date().toLocaleDateString()}: ${title} - ${content}`, ...(customer.interactionHistory || [])]
-            };
-
-            await updateData(COLLECTIONS.CUSTOMERS, customerId, updatedCustomer);
-            return { result: "Success: Đã lưu ghi chú vào hồ sơ khách hàng." };
+                interactionHistory: [`${new Date().toLocaleDateString()}: ${title}`, ...(customer.interactionHistory || [])]
+            });
+            return { result: "Đã lưu ghi chú thành công." };
         }
 
         if (name === 'create_appointment') {
             const { customerId, customerName, date, time, type, note } = args as any;
-            
-            const newAppointment: Appointment = {
-                id: '', // Generated by Firestore
+            await addData(COLLECTIONS.APPOINTMENTS, {
+                id: '',
                 customerId,
-                customerName: customerName || appState.customers.find(c => c.id === customerId)?.fullName || 'Khách hàng',
+                customerName: customerName || 'Khách hàng',
                 date: date || new Date().toISOString().split('T')[0],
                 time: time || '09:00',
                 type: type as AppointmentType || AppointmentType.OTHER,
                 status: AppointmentStatus.UPCOMING,
                 note: note || 'Đặt bởi AI'
-            };
-
-            await addData(COLLECTIONS.APPOINTMENTS, newAppointment);
-            return { result: `Success: Đã tạo lịch hẹn thành công vào ngày ${date} lúc ${time}.` };
+            });
+            return { result: `Đã tạo lịch hẹn ngày ${date} lúc ${time}.` };
         }
-
-        return { result: `Error: Tool ${name} not supported.` };
-    } catch (error: any) {
-        console.error("Tool Execution Failed:", error);
-        return { result: `Error executing tool: ${error.message}` };
+        return { result: `Tool ${name} not supported.` };
+    } catch (e: any) {
+        return { result: `Error: ${e.message}` };
     }
 };
 
-// --- HELPER TO EXTRACT PDF TEXT ---
 export const extractPdfText = async (url: string): Promise<string> => {
     if (!isServerAvailable || !functions) return "";
     try {
-        const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 }); 
-        const result: any = await gateway({
-            endpoint: 'extractText',
-            url: url
-        });
+        const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 });
+        const result: any = await gateway({ endpoint: 'extractText', url });
         return result.data.text || "";
     } catch (e) {
-        console.error("Failed to extract PDF text:", e);
+        console.error("PDF Extract Error:", e);
         return "";
     }
 };
 
-// --- MAIN CALL FUNCTION ---
 const callAI = async (payload: any): Promise<any> => {
-    // 1. Ưu tiên dùng Cloud Function (Server-side)
+    // 1. Server-side (Cloud Functions) - Preferred
     if (isServerAvailable && functions) {
         try {
-            const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 }); 
+            const gateway = httpsCallable(functions as Functions, 'geminiGateway', { timeout: 300000 });
             const result: any = await gateway(payload);
-            return result.data; // Returns { text, functionCalls, ... }
-        } catch (serverError: any) {
-            console.warn("⚠️ Server Backend failed or returned error.", serverError);
-            isServerAvailable = false; 
+            return result.data;
+        } catch (e) {
+            console.warn("Server AI failed, falling back to client.", e);
+            isServerAvailable = false;
         }
     }
-
-    // 2. Fallback xuống Client-side (Direct API)
+    // 2. Client-side (Direct API)
     try {
         if (!clientAI) throw new Error("Missing API Key");
-        
-        const { cachedContent, tools, ...clientPayload } = payload;
-        
-        const modelId = (clientPayload.model as string) || DEFAULT_MODEL; 
-        const config = clientPayload.config || {};
-        if (clientPayload.systemInstruction) config.systemInstruction = clientPayload.systemInstruction;
-        
-        // Pass tools if enabled
-        if (tools) config.tools = tools;
+        const { model, endpoint, message, history, systemInstruction, tools, contents, config } = payload;
+        const modelId = model || DEFAULT_MODEL;
+        const finalConfig = { ...config, systemInstruction, tools };
 
-        if (clientPayload.endpoint === 'chat') {
-            const chat = clientAI.chats.create({
-                model: modelId,
-                config: config,
-                history: clientPayload.history || []
-            });
-            
-            // Handle Message Content (String or Parts)
-            const msg = clientPayload.message; 
-            const result = await chat.sendMessage({ message: msg });
-            
-            return {
-                text: result.text,
-                functionCalls: result.functionCalls
-            };
+        if (endpoint === 'chat') {
+            const chat = clientAI.chats.create({ model: modelId, config: finalConfig, history: history || [] });
+            const result = await chat.sendMessage({ message: message || " " });
+            return { text: result.text, functionCalls: result.functionCalls };
         } else {
-            const result = await clientAI.models.generateContent({
-                model: modelId,
-                contents: clientPayload.contents,
-                config: config
-            });
-            return {
-                text: result.text,
-                functionCalls: result.functionCalls
-            };
+            const result = await clientAI.models.generateContent({ model: modelId, contents: contents, config: finalConfig });
+            return { text: result.text, functionCalls: result.functionCalls };
         }
-    } catch (clientError: any) {
-        console.error("❌ Client AI Error:", clientError);
-        if (clientError.message.includes("404")) {
-             return { text: "Lỗi cấu hình AI (404): Model không tồn tại hoặc API Key không hợp lệ." };
-        }
-        return { text: `Lỗi AI: ${clientError.message}` };
+    } catch (e: any) {
+        return { text: `AI Error: ${e.message}` };
     }
-};
-
-// Helper: Remove Vietnamese accents for better matching
-const removeAccents = (str: string) => {
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
-};
-
-// --- INTELLIGENT CONTEXT BUILDER ---
-const findRelevantContext = (query: string, state: AppState): string => {
-    const lowerQuery = query.toLowerCase();
-    const noAccentQuery = removeAccents(lowerQuery);
-    let context = "";
-    
-    // --- 1. GLOBAL ROSTER (DANH SÁCH KHÁCH HÀNG HIỆN CÓ) ---
-    // Luôn cung cấp danh sách tên để AI biết ai là người thật
-    const roster = state.customers.map(c => `- ${c.fullName} (ID: ${c.id})`).join('\n');
-    context += `\n=== DANH SÁCH KHÁCH HÀNG THẬT TRONG HỆ THỐNG ===\n(Chỉ trả lời và thực hiện hành động với ID có trong danh sách này)\n${roster}\n==============================================\n`;
-
-    // --- 2. DETECT CUSTOMERS BY NAME / PHONE (DEEP SEARCH) ---
-    const matchedCustomers = state.customers.filter(c => {
-        const fullName = c.fullName.toLowerCase();
-        const noAccentName = removeAccents(fullName);
-        const phone = c.phone.replace(/\D/g, ''); 
-        
-        if (fullName.includes(lowerQuery) || noAccentName.includes(noAccentQuery)) return true;
-        if (phone.includes(query) || (query.length >= 4 && phone.endsWith(query))) return true;
-        
-        const names = fullName.split(' ');
-        const firstName = names[names.length - 1];
-        if (lowerQuery.length > 2 && lowerQuery.includes(firstName)) return true;
-        
-        return false;
-    });
-
-    if (matchedCustomers.length > 1) {
-        context += `\n⚠️ CẢNH BÁO NHẬP NHẰNG: Tìm thấy ${matchedCustomers.length} khách hàng khớp tên.\n`;
-        matchedCustomers.forEach(c => {
-            context += `- ${c.fullName} (ID: ${c.id}, SĐT: ${c.phone})\n`;
-        });
-    }
-
-    if (matchedCustomers.length > 0) {
-        matchedCustomers.forEach(c => {
-            context += `\n--- CHI TIẾT DỮ LIỆU CỦA KHÁCH HÀNG: ${c.fullName} (ID: ${c.id}) ---\n`;
-            context += `   - ID: ${c.id}\n`;
-            context += `   - Năm sinh: ${new Date(c.dob).getFullYear()}, Giới tính: ${c.gender}\n`;
-            context += `   - SĐT: ${c.phone}\n`;
-            
-            // Add Contracts with WARNINGS for Exclusions
-            const customerContracts = state.contracts.filter(ct => ct.customerId === c.id);
-            if (customerContracts.length > 0) {
-                context += `   - Danh sách Hợp đồng (LƯU Ý NGƯỜI ĐƯỢC BẢO HIỂM):\n`;
-                customerContracts.forEach(ct => {
-                    let warning = "";
-                    if (ct.issuanceType === IssuanceType.CONDITIONAL) {
-                        warning = `[⚠️ CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${ct.exclusionNote || 'Không rõ'}". Tăng phí: ${ct.loadingFee || 0}đ]`;
-                    }
-                    context += `     + Số HĐ: ${ct.contractNumber} (${ct.status}) - Bên mua: ${c.fullName}\n`;
-                    // Updated: Explicitly state "Người Được Bảo Hiểm (NĐBH)"
-                    context += `       • SP Chính: ${ct.mainProduct.productName} -> NĐBH: "${ct.mainProduct.insuredName}" (STBH: ${ct.mainProduct.sumAssured.toLocaleString()})\n`;
-                    
-                    // Detailed Rider Info (Look specifically for HTVK Plans)
-                    if (ct.riders && ct.riders.length > 0) {
-                        ct.riders.forEach(r => {
-                            // Updated: Explicitly state "NĐBH" for riders
-                            let riderDetail = `       • SP Bổ trợ: ${r.productName} -> NĐBH: "${r.insuredName}"`;
-                            if (r.attributes) {
-                                // Important: Extract Plan/Package explicitly for AI
-                                if (r.attributes.plan) riderDetail += ` - Chương trình: "${r.attributes.plan}"`;
-                                if (r.attributes.package) riderDetail += ` (Gói: ${r.attributes.package})`;
-                                if (r.sumAssured > 0) riderDetail += ` - STBH: ${r.sumAssured.toLocaleString()}`;
-                            }
-                            context += `${riderDetail}\n`;
-                        });
-                    }
-                    context += `       ${warning}\n`;
-                });
-            }
-
-            if (c.timeline && c.timeline.length > 0) {
-                const sortedTimeline = [...c.timeline].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                context += `   - Lịch sử tương tác gần nhất:\n`;
-                sortedTimeline.slice(0, 5).forEach(t => { 
-                    context += `     + [${t.date.split('T')[0]}] ${t.title}: ${t.content}\n`;
-                });
-            }
-            context += `--------------------------------------------------\n`;
-        });
-    }
-
-    return context;
 };
 
 const sanitizeHistory = (history: any[]) => {
     const firstUserIndex = history.findIndex(h => h.role === 'user');
-    if (firstUserIndex === -1) return [];
-    const validHistory = history.slice(firstUserIndex);
-    return validHistory.map(h => ({
-        role: h.role,
-        parts: h.parts || [{ text: h.text }]
-    }));
+    return firstUserIndex === -1 ? [] : history.slice(firstUserIndex).map(h => ({ role: h.role, parts: [{ text: h.text }] }));
 };
 
-// --- CHAT WITH DATA (RAG + TOOLS) ---
-export const chatWithData = async (
-  query: string, 
-  appState: AppState, 
-  history: { role: 'user' | 'model'; text: string }[]
-): Promise<string> => {
-    
-    // 1. Context
-    const activeProducts = appState.products.filter(p => p.status === ProductStatus.ACTIVE);
-    let knowledgeBase = "";
-    activeProducts.forEach(p => {
-        if (p.extractedContent) knowledgeBase += `\n--- TÀI LIỆU SẢN PHẨM: ${p.name} ---\n${p.extractedContent.substring(0, 15000)}...\n`; 
+const buildContext = (query: string, state: AppState): string => {
+    // Basic RAG: Find relevant customers and contracts based on keyword match
+    const lowerQuery = query.toLowerCase();
+    const relevantCustomers = state.customers.filter(c => {
+        return c.fullName.toLowerCase().includes(lowerQuery) || c.phone.includes(query) || (state.customers.length < 5);
+    });
+
+    let context = `\n=== DỮ LIỆU HIỆN TẠI (Được cung cấp cho AI để trả lời chính xác) ===\n`;
+    relevantCustomers.forEach(c => {
+        context += `Khách: ${c.fullName} (ID:${c.id}, ${new Date().getFullYear() - new Date(c.dob).getFullYear()} tuổi)\n`;
+        const contracts = state.contracts.filter(ct => ct.customerId === c.id);
+        contracts.forEach(ct => {
+            context += ` - HĐ ${ct.contractNumber} (${ct.status}): ${ct.mainProduct.productName} (Phí: ${ct.totalFee.toLocaleString()})\n`;
+            if (ct.issuanceType === IssuanceType.CONDITIONAL) context += `   [!] Có thư thỏa thuận: ${ct.exclusionNote}\n`;
+            ct.riders.forEach(r => context += `   + Rider: ${r.productName} (Plan: ${r.attributes?.plan || 'N/A'})\n`);
+        });
     });
     
-    // Custom Logic: Inject Structured Benefits for "Hanh Trang Vui Khoe"
-    // This solves the problem of AI answering generally. We give it the EXACT table.
-    const htvkContext = `
-    \n=== BẢNG QUYỀN LỢI CHI TIẾT SẢN PHẨM "HÀNH TRANG VUI KHỎE" (HTVK) ===
-    (Sử dụng bảng này khi khách hàng hỏi về quyền lợi thẻ sức khỏe, tiền giường, phẫu thuật...)
-    ${JSON.stringify(HTVK_BENEFITS, null, 2)}
-    =========================================================================\n
-    `;
+    // Inject Product Knowledge (Active Products)
+    const activeProducts = state.products.filter(p => p.status === ProductStatus.ACTIVE && p.extractedContent);
+    activeProducts.forEach(p => {
+        context += `\n--- KIẾN THỨC SẢN PHẨM: ${p.name} ---\n${p.extractedContent?.substring(0, 5000)}...\n`;
+    });
 
-    const specificContext = findRelevantContext(query, appState);
+    // Inject HTVK Table
+    context += `\n--- QUYỀN LỢI THẺ SỨC KHỎE (HTVK) ---\n${JSON.stringify(HTVK_BENEFITS, null, 2)}\n`;
 
-    // 2. System Prompt
-    const systemInstructionText = `Bạn là TuanChom AI, Trợ lý Nghiệp vụ Bảo hiểm Prudential chuyên nghiệp.
+    return context;
+};
+
+// --- PHASE 2: ROUTING LOGIC ---
+const determineIntent = async (query: string): Promise<'EXPERT' | 'COACH' | 'CREATOR' | 'ADMIN'> => {
+    try {
+        const result = await callAI({
+            endpoint: 'generateContent',
+            model: 'gemini-3-flash-preview', // Fast model for routing
+            contents: `USER QUERY: "${query}"\n${PROMPTS.ROUTER}`,
+            config: { responseMimeType: "application/json", temperature: 0 }
+        });
+        const json = JSON.parse(result.text);
+        console.log("🚦 AI Router Decision:", json);
+        return json.target || 'EXPERT';
+    } catch (e) {
+        console.warn("Router failed, defaulting to EXPERT", e);
+        return 'EXPERT';
+    }
+};
+
+// --- PUBLIC API FUNCTIONS ---
+
+// 1. SMART CHAT (ROUTER -> AGENT)
+export const chatWithData = async (query: string, appState: AppState, history: { role: 'user' | 'model'; text: string }[]): Promise<string> => {
+    // Phase 2: Route request first
+    const targetAgent = await determineIntent(query);
     
-    QUYỀN HẠN & CÔNG CỤ:
-    - Bạn có quyền TRUY CẬP dữ liệu khách hàng (xem context bên dưới).
-    - Bạn có quyền GHI LẠI (Lưu) tương tác và TẠO LỊCH HẸN bằng cách gọi hàm (function calling).
-    - Nếu người dùng yêu cầu "Lưu lại", "Ghi chú lại", "Tạo lịch hẹn", "Nhắc tôi...", HÃY GỌI HÀM TƯƠNGỨNG ngay lập tức. Đừng chỉ nói suông.
-    
-    QUY TẮC QUAN TRỌNG KHI TRẢ LỜI VỀ QUYỀN LỢI (BENEFITS):
-    1. **Kiểm tra Hợp đồng:** Xem khách hàng đang tham gia "Chương trình" (Plan) nào trong context (VD: Cơ bản, Toàn diện...).
-    2. **Tra cứu Bảng quyền lợi:** Dựa vào tên Chương trình tìm được, tra cứu trong phần "BẢNG QUYỀN LỢI CHI TIẾT" bên dưới để lấy con số chính xác (Tiền giường, Phẫu thuật...).
-    3. **Trả lời chi tiết:** KHÔNG trả lời chung chung. Hãy nói rõ: "Theo HĐ số X, Chị A đang tham gia chương trình [TÊN], quyền lợi tiền giường là [SỐ TIỀN]/ngày..."
-    
-    QUY TẮC PHÂN BIỆT ĐỐI TƯỢNG (QUAN TRỌNG NHẤT):
-    - Một khách hàng (Bên mua bảo hiểm) có thể mua nhiều hợp đồng cho người thân (Vợ, Chồng, Con).
-    - Nếu câu hỏi là "Chị Thanh được quyền lợi gì", bạn phải tìm trong Context các dòng có ghi **"NĐBH: Chị Thanh"** (hoặc tên tương tự).
-    - **TUYỆT ĐỐI KHÔNG** cộng gộp quyền lợi của các sản phẩm mà NĐBH là người khác (Ví dụ: Chồng, Con) vào quyền lợi của Chị Thanh, ngay cả khi Chị Thanh là người mua (Chủ HĐ).
-    - Hãy nói rõ: "Chị Thanh đang được bảo vệ bởi các sản phẩm X, Y... (với tư cách là NĐBH)". Nếu Chị Thanh mua cho con, hãy nói "Chị Thanh có mua cho con là [Tên con] sản phẩm Z...".
-    
-    QUY TẮC VỀ LOẠI TRỪ (EXCLUSIONS):
-    - Nếu Hợp đồng có ghi chú [CẢNH BÁO: HĐ này CÓ ĐIỀU KIỆN], bạn PHẢI cảnh báo người dùng.
-    
-    DỮ LIỆU KHÁCH HÀNG & BỐI CẢNH:
-    ${specificContext}
-    
-    DỮ LIỆU SẢN PHẨM CẤU TRÚC (Ưu tiên dùng số liệu ở đây):
-    ${htvkContext}
-    
-    TÀI LIỆU SẢN PHẨM KHÁC (PDF):
-    ${knowledgeBase}
-    
-    HƯỚNG DẪN:
-    1. Xác định khách hàng và hợp đồng liên quan.
-    2. Kiểm tra kỹ ai là Người Được Bảo Hiểm (NĐBH) cho từng sản phẩm.
-    3. Nếu hỏi về HTVK, tìm tên Chương trình -> Tra bảng -> Trả lời số tiền cụ thể.
-    `;
+    let systemPrompt = '';
+    let temperature = 0.5;
+    const context = buildContext(query, appState);
+
+    // Dynamic Persona Switching
+    switch (targetAgent) {
+        case 'COACH':
+            systemPrompt = `${PROMPTS.COACH}\nCONTEXT:\n${context}`;
+            temperature = 0.7; // Higher creativity for coaching
+            break;
+        case 'CREATOR':
+            systemPrompt = `${PROMPTS.CREATOR}\nCONTEXT:\n${context}`;
+            temperature = 0.8; // High creativity for content
+            break;
+        case 'ADMIN':
+            systemPrompt = `${PROMPTS.ADMIN}\nCONTEXT:\n${context}`;
+            temperature = 0.1; // Strict for tool calling
+            break;
+        case 'EXPERT':
+        default:
+            systemPrompt = `${PROMPTS.EXPERT}\nCONTEXT:\n${context}`;
+            temperature = 0.1; // Strict for facts
+            break;
+    }
 
     const cleanHistory = sanitizeHistory(history);
 
     try {
-        // STEP 1: First Call to AI (Text or Function Call Request)
         const response = await callAI({
             endpoint: 'chat',
-            model: DEFAULT_MODEL, 
+            model: DEFAULT_MODEL,
             message: query,
             history: cleanHistory,
-            systemInstruction: systemInstructionText, 
-            tools: appTools, // Enable Tools
-            config: { temperature: 0.1 } 
+            systemInstruction: systemPrompt,
+            tools: appTools, // All agents have access to tools, but Admin uses them most
+            config: { temperature: temperature }
         });
 
-        // STEP 2: Check for Tool Calls
-        if (response.functionCalls && response.functionCalls.length > 0) {
-            // Execute all requested tools
-            const toolResults = [];
-            for (const fc of response.functionCalls) {
-                const output = await executeTool(fc, appState);
-                toolResults.push({
-                    functionResponse: {
-                        name: fc.name,
-                        response: output
-                    }
-                });
-            }
-
-            // STEP 3: Send Tool Results back to AI to get final confirmation text
-            const toolOutputText = JSON.stringify(toolResults);
-            
-            const secondTurnResponse = await callAI({
+        if (response.functionCalls) {
+            const toolResults = await Promise.all(response.functionCalls.map((fc: any) => executeTool(fc, appState)));
+            const confirmResponse = await callAI({
                 endpoint: 'chat',
                 model: DEFAULT_MODEL,
-                // Append the tool execution result as a "User" or "System" message for context
-                message: `[System]: Tool execution results: ${toolOutputText}. Hãy xác nhận lại với người dùng bằng tiếng Việt.`,
-                history: [
-                    ...cleanHistory, 
-                    { role: 'user', parts: [{ text: query }] }, 
-                    { role: 'model', parts: [{ functionCall: response.functionCalls[0] }] } // Simplified history
-                ],
-                systemInstruction: systemInstructionText,
-                config: { temperature: 0.1 }
+                message: `Tool results: ${JSON.stringify(toolResults)}. Inform user in Vietnamese clearly.`,
+                history: [...cleanHistory, { role: 'user', parts: [{ text: query }] }, { role: 'model', parts: [{ functionCall: response.functionCalls[0] }] }],
+                systemInstruction: systemPrompt
             });
-
-            return secondTurnResponse.text || "Đã thực hiện yêu cầu.";
+            return confirmResponse.text;
         }
+        
+        // Optional: Prefix response with Agent identity for UX (e.g. "[SUSAM]: ...")
+        const prefix = targetAgent === 'COACH' ? '🧘 **SUSAM**: ' : targetAgent === 'CREATOR' ? '🎨 **Content**: ' : '';
+        return prefix + response.text;
 
-        return response.text || "Xin lỗi, tôi không hiểu ý bạn.";
-
-    } catch (error: any) {
-        console.error("Chat Error:", error);
-        return "Xin lỗi, hệ thống đang gặp sự cố kết nối.";
+    } catch (e) {
+        return "Lỗi kết nối AI.";
     }
 };
 
-// ... (Rest of existing functions like consultantChat, etc. remain unchanged) ...
+// 2. VOICE COMMAND (Uses ADMIN Persona directly for speed)
+export const processVoiceCommand = async (transcript: string, customers: Customer[]): Promise<any> => {
+    const customerList = customers.map(c => `- ${c.fullName} (ID: ${c.id})`).join('\n');
+    const today = new Date().toISOString().split('T')[0];
+    
+    const prompt = `
+    ${PROMPTS.ADMIN}
+    
+    CONTEXT:
+    - Hôm nay: ${today}
+    - Danh sách KH:
+    ${customerList}
+    
+    INPUT TRANSCRIPT: "${transcript}"
+    
+    OUTPUT JSON FORMAT:
+    {
+      "matchCustomerId": "ID found or null",
+      "matchCustomerName": "Name found",
+      "insights": { "sentiment": "...", "life_event": "...", "opportunity": "..." },
+      "actions": [ { "type": "appointment|log|update_info", "data": { ... } } ]
+    }
+    `;
+
+    try {
+        const result = await callAI({
+            endpoint: 'generateContent',
+            model: DEFAULT_MODEL,
+            contents: prompt,
+            config: { responseMimeType: "application/json", temperature: 0.1 }
+        });
+        return JSON.parse(result.text);
+    } catch (e) {
+        console.error("Voice Error", e);
+        return null;
+    }
+};
+
+// 3. CONSULTANT CHAT (Uses COACH Persona directly)
 export const consultantChat = async (
     query: string, customer: Customer, contracts: Contract[], familyContext: any[],
     agentProfile: AgentProfile | null, conversationGoal: string,
@@ -423,157 +371,147 @@ export const consultantChat = async (
     chatStyle: 'zalo' | 'formal' = 'formal'
 ): Promise<string> => {
     
-    let agentContext = "Tên bạn: Tư vấn viên Prudential.";
-    if (agentProfile) {
-        agentContext = `
-        THÔNG TIN CỦA BẠN (TƯ VẤN VIÊN):
-        - Họ tên: ${agentProfile.fullName}
-        - Danh hiệu: ${agentProfile.title}
-        - Đơn vị: ${agentProfile.office || "Prudential Vietnam"}
-        `;
-    }
+    const contractsInfo = contracts.map(c => `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status})`).join('\n');
+    const rolePrompt = roleplayMode === 'consultant' ? PROMPTS.COACH : `VAI TRÒ: Bạn là KHÁCH HÀNG tên ${customer.fullName}. Tính cách: ${customer.analysis?.personality || 'Khó tính'}. Hãy đưa ra lời từ chối hóc búa.`;
 
-    const customerContext = `
-    THÔNG TIN KHÁCH HÀNG:
-    - Họ tên: ${customer.fullName}
+    const systemPrompt = `
+    ${rolePrompt}
+    
+    KHÁCH HÀNG MỤC TIÊU:
+    - Tên: ${customer.fullName}
     - Tuổi: ${new Date().getFullYear() - new Date(customer.dob).getFullYear()}
-    - Nghề nghiệp: ${customer.job}
-    - Tình trạng: ${customer.status}
-    - Mối quan tâm: ${customer.analysis?.keyConcerns || 'Chưa rõ'}
-    - Tính cách (DISC): ${customer.analysis?.personality || 'Chưa rõ'}
-    `;
-
-    const contractInfo = contracts.length > 0 
-        ? contracts.map(c => {
-            let info = `- HĐ ${c.contractNumber}: ${c.mainProduct.productName} (${c.status}). Phí: ${c.totalFee.toLocaleString()}đ`;
-            if (c.issuanceType === IssuanceType.CONDITIONAL) {
-                info += `\n  ⚠️ LƯU Ý QUAN TRỌNG: HĐ này CÓ ĐIỀU KIỆN. Loại trừ: "${c.exclusionNote}". Tăng phí: ${c.loadingFee}đ.`;
-            }
-            return info;
-        }).join('\n') 
-        : "Chưa có hợp đồng nào.";
+    - Nghề: ${customer.job}
+    - Hợp đồng đã có:
+    ${contractsInfo}
     
-    const familyInfo = familyContext.length > 0
-        ? familyContext.map(f => `- ${f.relationship}: ${f.name || 'Người thân'} `).join('\n')
-        : "Chưa có thông tin gia đình.";
-
-    let planContext = "";
-    if (planResult) {
-        planContext = `
-        DỮ LIỆU TÀI CHÍNH THỰC TẾ:
-        - Mục tiêu: ${planResult.goal}
-        - Thiếu hụt (Gap): ${planResult.shortfall.toLocaleString()}đ
-        `;
-    }
-
-    const systemInstruction = `
-    BỐI CẢNH: Bạn đang tham gia Roleplay (Mô phỏng tư vấn).
-    VAI TRÒ CỦA BẠN: ${roleplayMode === 'consultant' ? 'TƯ VẤN VIÊN CHUẨN MDRT' : 'KHÁCH HÀNG'}.
-    ${roleplayMode === 'consultant' ? agentContext : ''}
-    ${customerContext}
-    THÔNG TIN BỔ SUNG:
-    - Hợp đồng hiện tại (Chú ý các điều khoản loại trừ nếu có): 
-    ${contractInfo}
-    - Gia đình: ${familyInfo}
-    ${planContext}
-    MỤC TIÊU: ${conversationGoal}
-    PHONG CÁCH: ${chatStyle === 'zalo' ? 'Thân mật, ngắn gọn (Zalo)' : 'Chuyên nghiệp (Email/Gặp)'}.
-    
-    ${roleplayMode === 'consultant' ? `
-    QUY TẮC MDRT:
-    1. Không bán hàng gượng ép.
-    2. Dẫn dắt bằng câu hỏi.
-    3. Tập trung vào "Tại sao" (Why).
-    4. Đồng cảm trước khi giải quyết từ chối.
-    ` : `
-    HƯỚNG DẪN KHÁCH HÀNG:
-    1. Đóng vai Khách hàng ${customer.fullName}.
-    2. Phản ứng dựa trên tính cách: ${customer.analysis?.personality}.
-    `}
+    MỤC TIÊU HỘI THOẠI: ${conversationGoal}
+    PHONG CÁCH CHAT: ${chatStyle}
     `;
 
     const cleanHistory = sanitizeHistory(history);
-
-    try {
-        const result = await callAI({
-            endpoint: 'chat',
-            model: DEFAULT_MODEL,
-            message: query,
-            history: cleanHistory,
-            systemInstruction: systemInstruction,
-            config: { temperature: 0.7 }
-        });
-        return result.text;
-    } catch (e) {
-        return "Lỗi kết nối AI.";
-    }
-};
-
-export const getObjectionSuggestions = async (msg: string, customer: Customer): Promise<any[]> => {
-    const result = await callAI({
-        endpoint: 'generateContent',
+    const response = await callAI({
+        endpoint: 'chat',
         model: DEFAULT_MODEL,
-        contents: `Khách hàng vừa nói: "${msg}". Đóng vai Coach MDRT, gợi ý 3 cách xử lý từ chối (Đồng cảm, Hỏi ngược, Kể chuyện).`,
-        config: { 
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        label: { type: Type.STRING },
-                        type: { type: Type.STRING },
-                        content: { type: Type.STRING }
-                    },
-                    required: ["label", "type", "content"]
-                }
-            }
-        }
+        message: query,
+        history: cleanHistory,
+        systemInstruction: systemPrompt,
+        config: { temperature: 0.7 } 
     });
-    try { return JSON.parse(result.text); } catch { return []; }
+    return response.text;
 };
 
+// 4. MARKETING & CONTENT (Uses CREATOR Persona directly)
 export const generateSocialPost = async (topic: string, tone: string): Promise<any[]> => {
+    const prompt = `${PROMPTS.CREATOR}\nViết 3 status Facebook về chủ đề: "${topic}". Giọng điệu: ${tone}. Output JSON Array: [{title, content}]`;
     const result = await callAI({
         endpoint: 'generateContent',
         model: DEFAULT_MODEL,
-        contents: `Topic: ${topic}. Tone: ${tone}. Viết 3 status FB. Output JSON array {title, content}.`,
+        contents: prompt,
         config: { responseMimeType: "application/json" }
     });
     try { return JSON.parse(result.text); } catch { return []; }
 };
 
 export const generateContentSeries = async (topic: string): Promise<any[]> => {
+    const prompt = `${PROMPTS.CREATOR}\nLập kế hoạch 5 bài viết nuôi dưỡng khách hàng về: "${topic}". Output JSON Array: [{day, type, content}]`;
     const result = await callAI({
         endpoint: 'generateContent',
         model: DEFAULT_MODEL,
-        contents: `Topic: ${topic}. Plan 5 days content series. Output JSON array {day, type, content}.`,
+        contents: prompt,
         config: { responseMimeType: "application/json" }
     });
     try { return JSON.parse(result.text); } catch { return []; }
 };
 
 export const generateStory = async (facts: string, emotion: string): Promise<string> => {
+    const prompt = `${PROMPTS.CREATOR}\nDựa trên dữ kiện: "${facts}". Hãy viết một câu chuyện ngắn cảm động (Storytelling). Cảm xúc: ${emotion}.`;
     const result = await callAI({
         endpoint: 'generateContent',
         model: DEFAULT_MODEL,
-        contents: `Facts: ${facts}. Emotion: ${emotion}. Write a touching story.`,
-        config: { temperature: 0.9 }
+        contents: prompt,
+        config: { temperature: 0.8 }
     });
     return result.text;
 };
 
+// --- UTILS ---
+export const analyzeSocialInput = async (input: { text?: string; imageBase64?: string; mimeType?: string }, customerName: string): Promise<any> => {
+    const model = input.imageBase64 ? VISION_MODEL : DEFAULT_MODEL;
+    const contents = [];
+    if (input.text) contents.push({ text: `Status: "${input.text}"` });
+    if (input.imageBase64) contents.push({ inlineData: { mimeType: input.mimeType || 'image/jpeg', data: input.imageBase64 } });
+    contents.push({ text: `Phân tích dữ liệu MXH của khách hàng ${customerName}. Trả về JSON { lifeEvent, sentiment, suggestedUpdates, messageDraft }.` });
+
+    const result = await callAI({
+        endpoint: 'generateContent',
+        model: model,
+        contents: { parts: contents },
+        systemInstruction: PROMPTS.ADMIN,
+        config: { responseMimeType: "application/json" }
+    });
+    try { return JSON.parse(result.text); } catch { return null; }
+};
+
+export const getObjectionSuggestions = async (msg: string, customer: Customer): Promise<any[]> => {
+    const prompt = `${PROMPTS.COACH}\nKhách hàng ${customer.fullName} vừa nói: "${msg}". Gợi ý 3 cách xử lý. Output JSON Array: [{label, type, content}]`;
+    const result = await callAI({
+        endpoint: 'generateContent',
+        model: DEFAULT_MODEL,
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+    });
+    try { return JSON.parse(result.text); } catch { return []; }
+};
+
 export const generateFinancialAdvice = async (customerName: string, planResult: PlanResult): Promise<string> => {
-    const prompt = `Bạn là Chuyên gia Tài chính Prudential. Nhận xét ngắn về KH ${customerName}. Mục tiêu: ${planResult.goal}. Gap: ${planResult.shortfall.toLocaleString()}đ. Lời khuyên 3 câu.`;
+    const prompt = `${PROMPTS.EXPERT}\nNhận xét ngắn về kế hoạch tài chính của ${customerName}. Mục tiêu: ${planResult.goal}. Thiếu hụt: ${planResult.shortfall.toLocaleString()}.`;
     const result = await callAI({ endpoint: 'generateContent', model: DEFAULT_MODEL, contents: prompt });
     return result.text;
 };
 
 export const generateClaimSupport = async (contract: Contract, customer: Customer): Promise<string> => {
-    const result = await callAI({
-        endpoint: 'generateContent',
-        model: DEFAULT_MODEL,
-        contents: `Soạn tin hướng dẫn Claim HĐ ${contract.contractNumber} cho ${customer.fullName}`
-    });
+    const prompt = `${PROMPTS.ADMIN}\nSoạn tin nhắn hướng dẫn thủ tục bồi thường cho HĐ ${contract.contractNumber}.`;
+    const result = await callAI({ endpoint: 'generateContent', model: DEFAULT_MODEL, contents: prompt });
     return result.text;
+};
+
+export const extractIdentityCard = async (imageBase64: string): Promise<Partial<Customer> | null> => {
+    const prompt = `
+    VAI TRÒ: OCR Expert cho Căn cước công dân Việt Nam (CCCD).
+    NHIỆM VỤ: Trích xuất thông tin chính xác từ hình ảnh CCCD.
+    
+    YÊU CẦU:
+    - Trả về ngày sinh theo định dạng YYYY-MM-DD.
+    - Giới tính: Nam hoặc Nữ.
+    - Địa chỉ: Lấy địa chỉ thường trú.
+    - Nếu không rõ, hãy để trống hoặc ước lượng hợp lý.
+    
+    OUTPUT JSON:
+    {
+      "fullName": "Họ và tên in hoa",
+      "idCard": "Số CCCD",
+      "dob": "YYYY-MM-DD",
+      "gender": "Nam/Nữ",
+      "companyAddress": "Địa chỉ thường trú",
+      "age": number (tính toán từ năm sinh)
+    }
+    `;
+
+    try {
+        const result = await callAI({
+            endpoint: 'generateContent',
+            model: VISION_MODEL,
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(result.text);
+    } catch (e) {
+        console.error("ID Scan Error:", e);
+        return null;
+    }
 };

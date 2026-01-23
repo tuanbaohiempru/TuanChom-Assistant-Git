@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Customer, Contract, Appointment, CustomerStatus, Gender, MaritalStatus, FinancialRole, IncomeTrend, RiskTolerance, FinancialPriority, RelationshipType, Illustration, FinancialStatus, PersonalityType, ReadinessLevel } from '../types';
 import { ConfirmModal, formatDateVN } from '../components/Shared';
 import ExcelImportModal from '../components/ExcelImportModal';
 import { downloadTemplate, processCustomerImport } from '../utils/excelHelpers';
+import { extractIdentityCard } from '../services/geminiService';
 
 interface CustomersPageProps {
     customers: Customer[];
@@ -20,6 +21,8 @@ interface CustomersPageProps {
 
 const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, appointments = [], illustrations = [], onAdd, onUpdate, onDelete, onConvertIllustration, onDeleteIllustration }) => {
     const navigate = useNavigate();
+    const location = useLocation(); // Hook to read state passed from Magic Button
+    
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('all');
     
@@ -28,6 +31,10 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, app
     const [showImportModal, setShowImportModal] = useState(false); 
     const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string, name: string}>({ isOpen: false, id: '', name: '' });
     
+    // Scan ID State
+    const [isScanning, setIsScanning] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     // Empty Customer Template
     const defaultCustomer: Customer = {
         id: '',
@@ -76,6 +83,16 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, app
         }
     };
     const [formData, setFormData] = useState<Customer>(defaultCustomer);
+
+    // --- EFFECT: AUTO TRIGGER SCAN FROM MAGIC BUTTON ---
+    useEffect(() => {
+        if (location.state && location.state.triggerScan) {
+            // Clear state to prevent re-trigger on refresh
+            window.history.replaceState({}, document.title);
+            // Trigger Scan Input Click
+            fileInputRef.current?.click();
+        }
+    }, [location]);
 
     const filteredCustomers = customers.filter(c => {
         const matchesSearch = c.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -170,14 +187,75 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, app
         await Promise.all(uniqueOnes.map(c => onAdd(c))); 
     };
 
+    // --- ID CARD SCAN HANDLER ---
+    const handleScanIdCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsScanning(true);
+        try {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64String = reader.result as string;
+                const base64Content = base64String.split(',')[1];
+                
+                const extractedData = await extractIdentityCard(base64Content);
+                
+                if (extractedData) {
+                    setFormData({
+                        ...defaultCustomer,
+                        fullName: extractedData.fullName || '',
+                        idCard: extractedData.idCard || '',
+                        dob: extractedData.dob || '',
+                        gender: (extractedData.gender as Gender) || Gender.OTHER,
+                        companyAddress: extractedData.companyAddress || '',
+                        interactionHistory: [`Quét CCCD: ${new Date().toLocaleDateString('vi-VN')}`]
+                    });
+                    setShowModal(true); // Open the modal with pre-filled data
+                } else {
+                    alert("Không thể đọc thông tin từ ảnh này. Vui lòng thử lại hoặc nhập tay.");
+                }
+                setIsScanning(false);
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error("Scan Error", error);
+            alert("Lỗi xử lý ảnh: " + error);
+            setIsScanning(false);
+        } finally {
+            // Reset input so same file can be selected again if needed
+            e.target.value = ''; 
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Header & Filters */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Quản lý Khách hàng</h1>
-                <div className="flex gap-3">
-                    <button onClick={() => setShowImportModal(true)} className="bg-green-600 text-white px-5 py-2.5 rounded-xl hover:bg-green-700 transition font-medium flex items-center"><i className="fas fa-file-excel mr-2"></i>Nhập Excel</button>
-                    <button onClick={handleOpenAdd} className="bg-pru-red text-white px-5 py-2.5 rounded-xl hover:bg-red-700 transition font-medium flex items-center"><i className="fas fa-user-plus mr-2"></i>Thêm mới</button>
+                <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                    {/* Hide Excel Import on Mobile (hidden md:flex) */}
+                    <button onClick={() => setShowImportModal(true)} className="hidden md:flex bg-green-600 text-white px-4 py-2.5 rounded-xl hover:bg-green-700 transition font-medium items-center whitespace-nowrap text-sm"><i className="fas fa-file-excel mr-2"></i>Nhập Excel</button>
+                    
+                    {/* SCAN ID BUTTON */}
+                    <button 
+                        onClick={() => fileInputRef.current?.click()} 
+                        disabled={isScanning}
+                        className="bg-blue-600 text-white px-4 py-2.5 rounded-xl hover:bg-blue-700 transition font-medium flex items-center whitespace-nowrap text-sm disabled:opacity-70"
+                    >
+                        {isScanning ? <i className="fas fa-spinner fa-spin mr-2"></i> : <i className="fas fa-camera mr-2"></i>}
+                        {isScanning ? 'Đang đọc...' : 'Quét CCCD'}
+                    </button>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*" 
+                        capture="environment" // Prefer rear camera on mobile
+                        onChange={handleScanIdCard} 
+                    />
+
+                    <button onClick={handleOpenAdd} className="bg-pru-red text-white px-4 py-2.5 rounded-xl hover:bg-red-700 transition font-medium flex items-center whitespace-nowrap text-sm"><i className="fas fa-user-plus mr-2"></i>Thêm mới</button>
                 </div>
             </div>
             
@@ -227,13 +305,24 @@ const CustomersPage: React.FC<CustomersPageProps> = ({ customers, contracts, app
                             <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">Thêm Khách Hàng Nhanh</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i className="fas fa-times text-xl"></i></button>
                         </div>
+                        
+                        {/* Scan Alert */}
+                        {formData.interactionHistory[0]?.includes("Quét CCCD") && (
+                            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 p-3 rounded-lg text-xs mb-4 flex items-center">
+                                <i className="fas fa-check-circle mr-2 text-lg"></i>
+                                <span>Đã điền tự động từ CCCD. Vui lòng bổ sung SĐT để hoàn tất.</span>
+                            </div>
+                        )}
+
                         <div className="space-y-4 mb-6">
                             <div><label className="label-text">Họ và tên *</label><input className="input-field" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} /></div>
-                            <div><label className="label-text">Số điện thoại *</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                            <div><label className="label-text">Số điện thoại *</label><input className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="Nhập SĐT..." autoFocus={!formData.phone} /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="label-text">Giới tính</label><select className="input-field" value={formData.gender} onChange={(e: any) => setFormData({...formData, gender: e.target.value})}>{Object.values(Gender).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
-                                <div><label className="label-text">Trạng thái</label><select className="input-field" value={formData.status} onChange={(e: any) => setFormData({...formData, status: e.target.value})}>{Object.values(CustomerStatus).map(v => <option key={v} value={v}>{v}</option>)}</select></div>
+                                <div><label className="label-text">Ngày sinh</label><input type="date" className="input-field" value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})} /></div>
                             </div>
+                            <div><label className="label-text">Số CCCD</label><input className="input-field" value={formData.idCard} onChange={e => setFormData({...formData, idCard: e.target.value})} /></div>
+                            <div><label className="label-text">Địa chỉ</label><input className="input-field" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} /></div>
                         </div>
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Hủy</button>

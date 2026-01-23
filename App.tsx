@@ -46,12 +46,55 @@ const App: React.FC = () => {
     const [isChatOpen, setIsChatOpen] = useState(false);
 
     // Config Form State
-    const [configForm, setConfigForm] = useState({
-        apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: '', geminiKey: ''
-    });
+    const [configInput, setConfigInput] = useState('');
+    const [geminiKeyInput, setGeminiKeyInput] = useState('');
 
     // --- CONFIG CHECK & SETUP FORM ---
     if (!isFirebaseReady) {
+        // Helper to parse config from JSON or JS snippet
+        const parseConfig = (input: string) => {
+            try {
+                // 1. Try pure JSON
+                return JSON.parse(input);
+            } catch (e) {
+                // 2. Try regex extraction for JS object style (keys: "values")
+                const keys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+                const config: any = {};
+                let foundAny = false;
+
+                keys.forEach(key => {
+                    const regex = new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`);
+                    const match = input.match(regex);
+                    if (match && match[1]) {
+                        config[key] = match[1];
+                        foundAny = true;
+                    }
+                });
+
+                if (foundAny) return config;
+                return null;
+            }
+        };
+
+        const handleSaveConfig = () => {
+            const config = parseConfig(configInput);
+            
+            if (!config || !config.apiKey || !config.projectId) {
+                return alert("Không tìm thấy thông tin hợp lệ (apiKey, projectId). Vui lòng copy toàn bộ 'const firebaseConfig = { ... }' hoặc chuỗi JSON từ Firebase Console.");
+            }
+
+            if (geminiKeyInput) localStorage.setItem('gemini_api_key', geminiKeyInput);
+            
+            saveFirebaseConfig({
+                apiKey: config.apiKey,
+                authDomain: config.authDomain,
+                projectId: config.projectId,
+                storageBucket: config.storageBucket,
+                messagingSenderId: config.messagingSenderId,
+                appId: config.appId
+            });
+        };
+
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 animate-fade-in">
                 <div className="bg-white max-w-lg w-full p-8 rounded-2xl shadow-xl border border-gray-100">
@@ -61,62 +104,39 @@ const App: React.FC = () => {
                         </div>
                         <h1 className="text-2xl font-bold text-gray-800 mb-2">Cấu hình Hệ thống</h1>
                         <p className="text-gray-500 text-sm">
-                            Vui lòng nhập thông tin kết nối Firebase và Gemini API để bắt đầu. Dữ liệu này sẽ được lưu an toàn trong trình duyệt của bạn.
+                            Vui lòng nhập thông tin kết nối Firebase để bắt đầu. Dữ liệu được lưu an toàn trên trình duyệt của bạn.
                         </p>
                     </div>
                     
-                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    <div className="space-y-4">
                         <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1">Firebase API Key</label>
-                            <input className="input-field w-full border p-2 rounded" placeholder="AIzaSy..." value={configForm.apiKey} onChange={e => setConfigForm({...configForm, apiKey: e.target.value})} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">Project ID</label>
-                                <input className="input-field w-full border p-2 rounded" placeholder="my-project-id" value={configForm.projectId} onChange={e => setConfigForm({...configForm, projectId: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">Auth Domain</label>
-                                <input className="input-field w-full border p-2 rounded" placeholder="my-project.firebaseapp.com" value={configForm.authDomain} onChange={e => setConfigForm({...configForm, authDomain: e.target.value})} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">Storage Bucket</label>
-                                <input className="input-field w-full border p-2 rounded" placeholder="my-project.appspot.com" value={configForm.storageBucket} onChange={e => setConfigForm({...configForm, storageBucket: e.target.value})} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">Messaging Sender ID</label>
-                                <input className="input-field w-full border p-2 rounded" placeholder="123456789" value={configForm.messagingSenderId} onChange={e => setConfigForm({...configForm, messagingSenderId: e.target.value})} />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1">App ID</label>
-                            <input className="input-field w-full border p-2 rounded" placeholder="1:123456789:web:..." value={configForm.appId} onChange={e => setConfigForm({...configForm, appId: e.target.value})} />
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Firebase Configuration (JSON hoặc JS Snippet)</label>
+                            <textarea 
+                                className="input-field w-full border p-3 rounded-xl font-mono text-xs h-40 bg-gray-50 focus:bg-white transition-colors" 
+                                placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "project.firebaseapp.com",\n  projectId: "..."\n};`} 
+                                value={configInput} 
+                                onChange={e => setConfigInput(e.target.value)} 
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">
+                                * Copy từ Firebase Console -&gt; Project Settings -&gt; General -&gt; Your apps -&gt; SDK setup and configuration.
+                            </p>
                         </div>
                         
                         <div className="pt-4 border-t border-gray-100">
                             <label className="block text-xs font-bold text-purple-700 mb-1 flex items-center"><i className="fas fa-magic mr-1"></i> Gemini API Key (AI)</label>
-                            <input className="input-field w-full border border-purple-200 p-2 rounded bg-purple-50 focus:ring-purple-200" placeholder="AIzaSy..." value={configForm.geminiKey} onChange={e => setConfigForm({...configForm, geminiKey: e.target.value})} type="password" />
+                            <input 
+                                className="input-field w-full border border-purple-200 p-2 rounded bg-purple-50 focus:ring-purple-200" 
+                                placeholder="AIzaSy..." 
+                                value={geminiKeyInput} 
+                                onChange={e => setGeminiKeyInput(e.target.value)} 
+                                type="password" 
+                            />
                             <p className="text-[10px] text-gray-400 mt-1 italic">Lấy key tại: aistudio.google.com</p>
                         </div>
                     </div>
 
                     <button 
-                        onClick={() => {
-                            if(!configForm.apiKey || !configForm.projectId) return alert("Vui lòng nhập tối thiểu API Key và Project ID");
-                            // Save Gemini Key Separately
-                            if(configForm.geminiKey) localStorage.setItem('gemini_api_key', configForm.geminiKey);
-                            // Save Firebase Config
-                            saveFirebaseConfig({
-                                apiKey: configForm.apiKey,
-                                authDomain: configForm.authDomain,
-                                projectId: configForm.projectId,
-                                storageBucket: configForm.storageBucket,
-                                messagingSenderId: configForm.messagingSenderId,
-                                appId: configForm.appId
-                            });
-                        }}
+                        onClick={handleSaveConfig}
                         className="w-full mt-6 bg-pru-red text-white font-bold py-3 rounded-xl hover:bg-red-700 transition shadow-lg flex items-center justify-center"
                     >
                         <i className="fas fa-save mr-2"></i> Lưu & Kết nối
@@ -247,7 +267,14 @@ const App: React.FC = () => {
                 <>
                     <Layout onToggleChat={() => setIsChatOpen(!isChatOpen)} user={user}>
                         <Routes>
-                            <Route path="/" element={<Dashboard state={state} onUpdateContract={updateContract} />} />
+                            <Route path="/" element={
+                                <Dashboard 
+                                    state={state} 
+                                    onUpdateContract={updateContract} 
+                                    onAddAppointment={addAppointment}
+                                    onUpdateCustomer={updateCustomer}
+                                />
+                            } />
                             <Route path="/customers" element={
                                 <CustomersPage 
                                     customers={state.customers} 

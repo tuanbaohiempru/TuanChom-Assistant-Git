@@ -128,51 +128,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, onSave, isDarkMode
 
                 {/* Right Col: Forms */}
                 <div className="lg:col-span-2 space-y-6">
-                    {/* 1. SALES TARGETS (NEW) */}
-                    <div className="bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
-                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4 flex items-center">
-                            <i className="fas fa-crosshairs text-pru-red mr-2"></i> Thiết lập Mục tiêu Doanh số (VNĐ)
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="label-style">Mục tiêu Tuần</label>
-                                <CurrencyInput 
-                                    className="input-style font-bold text-blue-600" 
-                                    value={formData.targets?.weekly || 0} 
-                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, weekly: v}})} 
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className="label-style">Mục tiêu Tháng</label>
-                                <CurrencyInput 
-                                    className="input-style font-bold text-green-600" 
-                                    value={formData.targets?.monthly || 0} 
-                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, monthly: v}})} 
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className="label-style">Mục tiêu Quý</label>
-                                <CurrencyInput 
-                                    className="input-style font-bold text-orange-600" 
-                                    value={formData.targets?.quarterly || 0} 
-                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, quarterly: v}})} 
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className="label-style">Mục tiêu Năm</label>
-                                <CurrencyInput 
-                                    className="input-style font-bold text-pru-red" 
-                                    value={formData.targets?.yearly || 0} 
-                                    onChange={(v) => setFormData({...formData, targets: {...formData.targets!, yearly: v}})} 
-                                    placeholder="0"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
                     {/* 2. PROFILE INFO */}
                     <div className="bg-white dark:bg-pru-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
                         <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 border-b border-gray-100 dark:border-gray-800 pb-2 mb-4">Thông tin cá nhân</h3>

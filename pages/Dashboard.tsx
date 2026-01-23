@@ -1,509 +1,690 @@
 
-import React, { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { AppState, ContractStatus, AppointmentStatus, CustomerStatus, ReadinessLevel, Contract, Customer, AppointmentType } from '../types';
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { AppState, ContractStatus, AppointmentStatus, CustomerStatus, ReadinessLevel, Contract, Customer, AppointmentType, InteractionType, TimelineItem, Appointment } from '../types';
 import { formatDateVN } from '../components/Shared';
+import { processVoiceCommand } from '../services/geminiService';
 
 interface DashboardProps {
   state: AppState;
   onUpdateContract: (c: Contract) => void;
+  onAddAppointment: (a: Appointment) => Promise<void>;
+  onUpdateCustomer: (c: Customer) => Promise<void>;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ state }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, onAddAppointment, onUpdateCustomer }) => {
   const { customers, contracts, appointments, agentProfile } = state;
-  const [activeTab, setActiveTab] = useState<'tasks' | 'pending'>('tasks');
+  const navigate = useNavigate();
+  const location = useLocation(); // Listen for triggers from Layout
   
-  // --- NEW: Search & Filter State ---
-  const [taskSearchTerm, setTaskSearchTerm] = useState('');
-  const [taskFilterType, setTaskFilterType] = useState<string>('all');
+  // State for Expansion
+  const [isRadarExpanded, setIsRadarExpanded] = useState(false);
 
-  // Action Modal State
+  // Action Modal State (Quick Actions)
   const [actionModal, setActionModal] = useState<{isOpen: boolean, type: 'call' | 'zalo', customer: Customer | null, content?: string}>({
       isOpen: false, type: 'call', customer: null
   });
 
-  // --- 1. GOAL & SALES TRACKING LOGIC ---
-  const salesMetrics = useMemo(() => {
-    const today = new Date();
-    
-    // Define Time Ranges
-    const getWeekRange = () => {
-        const first = today.getDate() - today.getDay() + 1; // Monday
-        const last = first + 6; // Sunday
-        return {
-            start: new Date(today.setDate(first)).setHours(0,0,0,0),
-            end: new Date(today.setDate(last)).setHours(23,59,59,999)
-        };
-    };
-    
-    const getMonthRange = () => ({
-        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(),
-        end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getTime()
-    });
+  // VOICE COMMAND STATE
+  const [voiceModal, setVoiceModal] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [voiceActions, setVoiceActions] = useState<any | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-    const getQuarterRange = () => {
-        const currQuarter = Math.floor(new Date().getMonth() / 3);
-        return {
-            start: new Date(new Date().getFullYear(), currQuarter * 3, 1).getTime(),
-            end: new Date(new Date().getFullYear(), currQuarter * 3 + 3, 0).getTime()
-        };
-    };
+  // --- EFFECT: HANDLE EXTERNAL TRIGGERS (FROM MAGIC BUTTON) ---
+  useEffect(() => {
+      if (location.state) {
+          if (location.state.triggerVoice) {
+              window.history.replaceState({}, document.title);
+              toggleVoiceRecording();
+          } else if (location.state.triggerNote) {
+              window.history.replaceState({}, document.title);
+              // For Note, we just open Voice for now as it handles notes too, 
+              // or we could build a separate Note modal. Let's reuse Voice for "Quick Note" via speech.
+              toggleVoiceRecording(); 
+          }
+      }
+  }, [location]);
 
-    const getYearRange = () => ({
-        start: new Date(new Date().getFullYear(), 0, 1).getTime(),
-        end: new Date(new Date().getFullYear(), 11, 31).getTime()
-    });
+  // --- VOICE LOGIC ---
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'vi-VN';
 
-    const ranges = {
-        week: getWeekRange(),
-        month: getMonthRange(),
-        quarter: getQuarterRange(),
-        year: getYearRange()
-    };
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+             // Show interim?
+          }
+        }
+        if(finalTranscript) setTranscript(prev => prev + ' ' + finalTranscript);
+      };
+      recognition.onerror = (e: any) => console.error("Mic Error:", e);
+      recognitionRef.current = recognition;
+    }
+  }, []);
 
-    // Calculate Actual Sales (Based on Total Fee of ACTIVE contracts within range)
-    const calculateSales = (start: number, end: number) => {
-        return contracts
-            .filter(c => {
-                const effDate = new Date(c.effectiveDate).getTime();
-                return c.status === ContractStatus.ACTIVE && effDate >= start && effDate <= end;
-            })
-            .reduce((sum, c) => sum + c.totalFee, 0);
-    };
+  const toggleVoiceRecording = () => {
+      if(!recognitionRef.current) return alert("Trình duyệt không hỗ trợ.");
+      if(isListening) {
+          recognitionRef.current.stop();
+          setVoiceModal(false);
+          handleProcessVoice();
+      } else {
+          setTranscript('');
+          setVoiceActions(null);
+          setVoiceModal(true);
+          recognitionRef.current.start();
+      }
+  };
 
-    const actual = {
-        week: calculateSales(ranges.week.start, ranges.week.end),
-        month: calculateSales(ranges.month.start, ranges.month.end),
-        quarter: calculateSales(ranges.quarter.start, ranges.quarter.end),
-        year: calculateSales(ranges.year.start, ranges.year.end)
-    };
+  const handleProcessVoice = async () => {
+      if(!transcript.trim()) return;
+      setIsProcessingVoice(true);
+      setVoiceModal(true); // Keep modal open to show processing/results
+      try {
+          const result = await processVoiceCommand(transcript, customers);
+          setVoiceActions(result);
+      } catch (e) {
+          alert("Lỗi xử lý giọng nói: " + e);
+      } finally {
+          setIsProcessingVoice(false);
+      }
+  };
 
-    // Get Targets from Profile (Default to 0 if not set)
-    const targets = agentProfile?.targets || { weekly: 0, monthly: 0, quarterly: 0, yearly: 0 };
+  const executeVoiceActions = async () => {
+      if(!voiceActions || !voiceActions.matchCustomerId) return;
+      const customer = customers.find(c => c.id === voiceActions.matchCustomerId);
+      if(!customer) return alert("Không tìm thấy khách hàng trong hệ thống.");
 
-    return { actual, targets };
-  }, [contracts, agentProfile]);
+      let successCount = 0;
 
-  // --- 2. SMART TASKS (ACTION CENTER - Next 10 Days) ---
-  const smartTasks = useMemo(() => {
-    const tasks: { 
-        id: string; 
-        type: 'urgent' | 'important' | 'normal'; 
-        title: string; 
-        subtitle: string; 
-        icon: string; 
-        color: string;
-        customer?: Customer; // Link to customer for actions
-        actionType?: 'payment' | 'birthday' | 'care'; // Context for message generation
-        data?: any; // Extra data like contract info
-    }[] = [];
-    
-    // Normalize Dates
+      for (const action of voiceActions.actions) {
+          if (action.type === 'appointment') {
+              const newAppt: Appointment = {
+                  id: '',
+                  customerId: customer.id,
+                  customerName: customer.fullName,
+                  date: action.data.date,
+                  time: action.data.time,
+                  type: (action.data.apptType as AppointmentType) || AppointmentType.CONSULTATION,
+                  status: AppointmentStatus.UPCOMING,
+                  note: action.data.note || 'Tạo tự động qua giọng nói'
+              };
+              await onAddAppointment(newAppt);
+              successCount++;
+          } 
+          else if (action.type === 'log') {
+              const newItem: TimelineItem = {
+                  id: Date.now().toString(),
+                  date: new Date().toISOString(),
+                  type: (action.data.interactionType as InteractionType) || InteractionType.NOTE,
+                  title: action.data.title || 'Ghi chú nhanh',
+                  content: action.data.content || transcript,
+                  result: action.data.result || ''
+              };
+              const updated = {
+                  ...customer,
+                  timeline: [newItem, ...(customer.timeline || [])],
+                  interactionHistory: [`${new Date().toLocaleDateString()}: ${newItem.title}`, ...(customer.interactionHistory || [])]
+              };
+              await onUpdateCustomer(updated);
+              successCount++;
+          }
+          // Handle Info Updates if implemented later
+      }
+      
+      alert(`Đã thực hiện ${successCount} hành động thành công!`);
+      setVoiceModal(false);
+      setTranscript('');
+      setVoiceActions(null);
+  };
+
+  // --- CONTEXTUAL INTELLIGENCE LOGIC (THE BRAIN) ---
+  const commandCenter = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
     
-    const next10Days = new Date(today);
-    next10Days.setDate(today.getDate() + 10);
-    next10Days.setHours(23,59,59,999);
-
-    // A. Urgent & Payments: Lapsed Contracts, Overdue & Upcoming Payments
-    contracts.forEach(c => {
-        const customer = customers.find(cus => cus.id === c.customerId);
-        if (c.status === ContractStatus.LAPSED) {
-            tasks.push({
-                id: `lapsed-${c.id}`, type: 'urgent',
-                title: `Khôi phục HĐ ${c.contractNumber}`,
-                subtitle: 'Hợp đồng đã mất hiệu lực! Liên hệ ngay.',
-                icon: 'fa-exclamation-triangle', color: 'text-red-600 bg-red-100 dark:bg-red-900/20 dark:text-red-400',
-                customer: customer,
-                actionType: 'care'
-            });
-        } else if (c.status === ContractStatus.ACTIVE) {
-            const dueDate = new Date(c.nextPaymentDate);
-            // Overdue (Urgent)
-            if (dueDate < today) {
-                tasks.push({
-                    id: `overdue-${c.id}`, type: 'urgent',
-                    title: `Quá hạn đóng phí HĐ ${c.contractNumber}`,
-                    subtitle: `Trễ hạn từ ngày ${formatDateVN(c.nextPaymentDate)}`,
-                    icon: 'fa-clock', color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400',
-                    customer: customer,
-                    actionType: 'payment',
-                    data: c
-                });
-            } 
-            // Upcoming in 10 days (Normal)
-            else if (dueDate >= today && dueDate <= next10Days) {
-                 const diff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-                 tasks.push({
-                    id: `due-${c.id}`, type: 'normal',
-                    title: `Thu phí HĐ ${c.contractNumber}`,
-                    subtitle: `Hạn đóng: ${formatDateVN(c.nextPaymentDate)} (Còn ${diff} ngày)`,
-                    icon: 'fa-file-invoice-dollar', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400',
-                    customer: customer,
-                    actionType: 'payment',
-                    data: c
-                });
-            }
-        }
-    });
-
-    // B. Important: Hot Customers (Ready to close)
-    const hotCustomers = customers.filter(c => c.analysis?.readiness === ReadinessLevel.HOT && c.status !== CustomerStatus.SIGNED);
-    hotCustomers.forEach(c => {
-        tasks.push({
-            id: `hot-${c.id}`, type: 'important',
-            title: `Chốt nóng: ${c.fullName}`,
-            subtitle: 'Khách hàng đang rất sẵn sàng (HOT)',
-            icon: 'fa-fire', color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/10 dark:text-orange-300',
-            customer: c,
-            actionType: 'care'
+    // --- 1. GROWTH ENGINE (Doanh thu & Upsell) ---
+    const growthTasks: any[] = [];
+    
+    // A. Lapsed Contracts (Khôi phục = Doanh thu ngay)
+    contracts.filter(c => c.status === ContractStatus.LAPSED).forEach(c => {
+        const cus = customers.find(x => x.id === c.customerId);
+        growthTasks.push({
+            id: `lapsed-${c.id}`,
+            priority: 'high',
+            title: `Khôi phục HĐ ${c.contractNumber}`,
+            desc: `HĐ mất hiệu lực. Khách: ${cus?.fullName}`,
+            actionLabel: 'Gọi khôi phục',
+            actionIcon: 'fa-phone-alt',
+            customer: cus,
+            actionType: 'call'
         });
     });
 
-    // C. Normal: Appointments (Next 10 days)
-    appointments
+    // B. Payments Due (Thu phí)
+    contracts.filter(c => c.status === ContractStatus.ACTIVE).forEach(c => {
+        const dueDate = new Date(c.nextPaymentDate);
+        // Overdue or Due Today/Tomorrow/Next 3 days
+        const diff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+        if (diff <= 3 && diff >= -30) { // Show overdue up to 30 days and upcoming 3 days
+            const cus = customers.find(x => x.id === c.customerId);
+            growthTasks.push({
+                id: `due-${c.id}`,
+                priority: diff < 0 ? 'urgent' : 'high',
+                title: `Thu phí: ${cus?.fullName}`,
+                desc: `${c.totalFee.toLocaleString()}đ (${diff < 0 ? `Trễ ${Math.abs(diff)} ngày` : `Hạn: ${formatDateVN(c.nextPaymentDate)}`})`,
+                actionLabel: 'Nhắc phí ngay',
+                actionIcon: 'fa-comment-dollar',
+                customer: cus,
+                actionType: 'zalo_payment',
+                meta: { fee: c.totalFee, date: c.nextPaymentDate }
+            });
+        }
+    });
+
+    // C. Hot Leads (Chốt đơn)
+    customers.filter(c => c.analysis?.readiness === ReadinessLevel.HOT && c.status !== CustomerStatus.SIGNED).forEach(c => {
+        growthTasks.push({
+            id: `hot-${c.id}`,
+            priority: 'high',
+            title: `Cơ hội chốt: ${c.fullName}`,
+            desc: 'Khách hàng đang nóng (Hot), cần chốt ngay.',
+            actionLabel: 'Thiết kế & Chốt',
+            actionIcon: 'fa-file-signature',
+            customer: c,
+            actionType: 'advisory'
+        });
+    });
+
+    // --- 2. TRUST ENGINE (Uy tín & Quan hệ) ---
+    const trustTasks: any[] = [];
+
+    // A. Birthdays (Today only for Command Center priority)
+    customers.forEach(c => {
+        const dob = new Date(c.dob);
+        if (dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth()) {
+            trustTasks.push({
+                id: `bday-${c.id}`,
+                priority: 'medium',
+                title: `Sinh nhật ${c.fullName}`,
+                desc: 'Hôm nay là ngày sinh nhật khách hàng.',
+                actionLabel: 'Gửi quà/Lời chúc',
+                actionIcon: 'fa-gift',
+                customer: c,
+                actionType: 'zalo_bday'
+            });
+        }
+    });
+
+    // B. Care Appointments (Today)
+    appointments.filter(a => {
+        const d = new Date(a.date);
+        return a.status === AppointmentStatus.UPCOMING && 
+               d.getDate() === today.getDate() && 
+               d.getMonth() === today.getMonth() &&
+               d.getFullYear() === today.getFullYear() &&
+               (a.type === AppointmentType.CARE_CALL || a.type === AppointmentType.PAPERWORK || a.type === AppointmentType.CONSULTATION);
+    }).forEach(a => {
+        const cus = customers.find(c => c.id === a.customerId);
+        trustTasks.push({
+            id: `care-${a.id}`,
+            priority: 'medium',
+            title: `${a.type}: ${a.customerName}`,
+            desc: a.note || 'Theo lịch đã hẹn',
+            actionLabel: 'Gọi ngay',
+            actionIcon: 'fa-phone',
+            customer: cus,
+            actionType: 'call'
+        });
+    });
+
+    // --- 3. MASTERY ENGINE (Kỹ năng & Kiến thức) ---
+    const skillTasks: any[] = [];
+    
+    // A. Roleplay based on "Warm" customers (Preparation)
+    const warmCustomer = customers.find(c => c.analysis?.readiness === ReadinessLevel.WARM);
+    if (warmCustomer) {
+        skillTasks.push({
+            id: `skill-roleplay-${warmCustomer.id}`,
+            priority: 'low',
+            title: `Luyện xử lý từ chối`,
+            desc: `Khách ${warmCustomer.fullName} đang phân vân.`,
+            actionLabel: 'Roleplay với AI',
+            actionIcon: 'fa-robot',
+            customer: warmCustomer,
+            actionType: 'roleplay'
+        });
+    } else {
+        // Generic Skill Task
+        skillTasks.push({
+            id: `skill-generic`,
+            priority: 'low',
+            title: `Nâng cao kỹ năng`,
+            desc: `Luyện tập kịch bản: "Tôi không có tiền"`,
+            actionLabel: 'Luyện tập ngay',
+            actionIcon: 'fa-dumbbell',
+            actionType: 'roleplay_generic'
+        });
+    }
+
+    // B. Market News / Product Update (Static Context)
+    skillTasks.push({
+        id: `skill-news`,
+        priority: 'low',
+        title: `Kiến thức sản phẩm`,
+        desc: `Ôn lại quyền lợi thẻ HTVK (Nâng cao)`,
+        actionLabel: 'Xem tài liệu',
+        actionIcon: 'fa-book-open',
+        actionType: 'read_news'
+    });
+
+    return {
+        growth: growthTasks.slice(0, 3), // Max 3 items
+        trust: trustTasks.slice(0, 3),
+        skills: skillTasks.slice(0, 3)
+    };
+  }, [customers, contracts, appointments]);
+
+  // --- FULL RADAR (Expanded List - 10 Days) ---
+  const fullRadarTasks = useMemo(() => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const next10Days = new Date(today);
+      next10Days.setDate(today.getDate() + 10);
+
+      return appointments
         .filter(a => {
             const d = new Date(a.date);
             return a.status === AppointmentStatus.UPCOMING && d >= today && d <= next10Days;
         })
-        .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .forEach(a => {
-            const customer = customers.find(c => c.id === a.customerId);
-            const isToday = a.date === today.toISOString().split('T')[0];
-            const timeDisplay = isToday ? a.time : `${formatDateVN(a.date)} ${a.time}`;
-            
-            tasks.push({
-                id: `appt-${a.id}`, type: 'normal',
-                title: `${timeDisplay}: ${a.type} - ${a.customerName}`,
-                subtitle: a.note || 'Không có ghi chú',
-                icon: 'fa-calendar-check', color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400',
-                customer: customer,
-                actionType: a.type === AppointmentType.BIRTHDAY ? 'birthday' : 'care'
-            });
-        });
+        .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [appointments]);
 
-    // D. Birthdays (Next 10 days)
-    customers.forEach(c => {
-        const dob = new Date(c.dob);
-        const nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-        if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
-        
-        const diff = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 3600 * 24));
-        
-        if (diff >= 0 && diff <= 10) {
-             const bdayStr = formatDateVN(nextBday.toISOString().split('T')[0]).substring(0, 5);
-             tasks.push({
-                id: `bday-${c.id}`, type: 'normal',
-                title: `Sinh nhật ${c.fullName} ${diff === 0 ? 'hôm nay' : `(${bdayStr})`}`,
-                subtitle: diff === 0 ? 'Gửi tin nhắn chúc mừng ngay!' : `Còn ${diff} ngày nữa`,
-                icon: 'fa-birthday-cake', color: 'text-pink-500 bg-pink-100 dark:bg-pink-900/20 dark:text-pink-400',
-                customer: c,
-                actionType: 'birthday'
-            });
-        }
-    });
-
-    const priorityMap = { urgent: 0, important: 1, normal: 2 };
-    return tasks.sort((a, b) => priorityMap[a.type] - priorityMap[b.type]);
-
-  }, [customers, contracts, appointments]);
-
-  // --- 2.5 PENDING APPOINTMENTS (ALL Unconfirmed with SEARCH & FILTER) ---
-  const pendingAppointments = useMemo(() => {
-      const now = new Date();
-      now.setHours(0,0,0,0);
-
-      // 1. Base Filter
-      let filtered = appointments.filter(a => a.status === AppointmentStatus.UPCOMING);
-
-      // 2. Search Text
-      if (taskSearchTerm) {
-          const lower = taskSearchTerm.toLowerCase();
-          filtered = filtered.filter(a => 
-              a.customerName.toLowerCase().includes(lower) || 
-              (a.note && a.note.toLowerCase().includes(lower))
-          );
+  // --- ACTION HANDLER ---
+  const executeAction = (task: any) => {
+      if (task.actionType === 'call' && task.customer) {
+          window.location.href = `tel:${task.customer.phone}`;
+      } 
+      else if (task.actionType === 'zalo_payment' && task.customer) {
+          const shortName = task.customer.fullName.split(' ').pop();
+          const content = `Chào ${shortName}, em nhắc nhẹ mình sắp đến hạn đóng phí bảo hiểm để duy trì quyền lợi bảo vệ ạ. Số tiền là: ${task.meta?.fee.toLocaleString()}đ. Cần hỗ trợ gì nhắn em nhé!`;
+          setActionModal({ isOpen: true, type: 'zalo', customer: task.customer, content });
+      } 
+      else if (task.actionType === 'zalo_bday' && task.customer) {
+          const shortName = task.customer.fullName.split(' ').pop();
+          const content = `Chúc mừng sinh nhật ${shortName}! 🎂 Chúc ${shortName} tuổi mới thật nhiều sức khỏe, hạnh phúc và thành công rực rỡ!`;
+          setActionModal({ isOpen: true, type: 'zalo', customer: task.customer, content });
+      } 
+      else if (task.actionType === 'advisory' && task.customer) {
+          navigate(`/product-advisory`, { state: { customerId: task.customer.id } });
+      } 
+      else if (task.actionType === 'roleplay' && task.customer) {
+          navigate(`/advisory/${task.customer.id}`);
+      } 
+      else if (task.actionType === 'roleplay_generic') {
+          // Open AI Chat with a prompt
+          alert("Hãy vào mục Khách hàng -> Chọn một khách hàng bất kỳ -> Bấm Roleplay để luyện tập.");
       }
-
-      // 3. Filter Type
-      if (taskFilterType !== 'all') {
-          filtered = filtered.filter(a => a.type === taskFilterType);
-      }
-
-      // 4. Sort Date ASC (Overdue first)
-      return filtered.sort((a, b) => {
-          const dateA = new Date(`${a.date}T${a.time}`);
-          const dateB = new Date(`${b.date}T${b.time}`);
-          return dateA.getTime() - dateB.getTime();
-      });
-  }, [appointments, taskSearchTerm, taskFilterType]);
-
-  // --- 3. CHART DATA ---
-  const chartData = useMemo(() => {
-    const data = [];
-    const today = new Date();
-    for (let i = 5; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        const monthStr = `T${d.getMonth() + 1}`;
-        const revenue = contracts
-            .filter(c => {
-                const eff = new Date(c.effectiveDate);
-                return eff.getMonth() === d.getMonth() && eff.getFullYear() === d.getFullYear() && c.status === ContractStatus.ACTIVE;
-            })
-            .reduce((sum, c) => sum + (c.totalFee / 1000000), 0);
-        data.push({ name: monthStr, value: revenue });
-    }
-    return data;
-  }, [contracts]);
-
-  const handleTaskAction = (task: typeof smartTasks[0], action: 'call' | 'zalo') => {
-    if (!task.customer) return;
-    if (action === 'call') {
-        window.location.href = `tel:${task.customer.phone}`;
-    } else {
-        let content = "Chào {name}, em nhắn tin để hỏi thăm tình hình sức khỏe của gia đình mình ạ.";
-        const firstName = task.customer.fullName.split(' ').pop();
-        const gender = task.customer.gender === 'Nam' ? 'anh' : task.customer.gender === 'Nữ' ? 'chị' : 'bạn';
-        content = content.replace(/\{name\}/g, firstName || '').replace(/\{gender\}/g, gender);
-        setActionModal({ isOpen: true, type: 'zalo', customer: task.customer, content: content });
-    }
-  };
-
-  const getTaskIcon = (type: AppointmentType) => {
-      switch (type) {
-          case AppointmentType.CONSULTATION: return 'fa-comments';
-          case AppointmentType.FEE_REMINDER: return 'fa-file-invoice-dollar';
-          case AppointmentType.BIRTHDAY: return 'fa-birthday-cake';
-          case AppointmentType.CARE_CALL: return 'fa-phone-alt';
-          case AppointmentType.PAPERWORK: return 'fa-file-signature';
-          default: return 'fa-calendar-check';
+      else if (task.actionType === 'read_news') {
+          navigate('/products');
       }
   };
 
   return (
-    <div className="space-y-6 pb-10 transition-colors duration-300">
+    <div className="space-y-8 pb-32 animate-fade-in max-w-7xl mx-auto">
       
-      {/* 1. SALES GOAL TRACKING */}
-      <div className="flex justify-between items-end mb-2">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
-              <i className="fas fa-crosshairs text-pru-red mr-2"></i> Mục tiêu & Doanh số
-          </h2>
-          <Link to="/settings" className="text-sm text-blue-500 hover:underline flex items-center">
-              <i className="fas fa-cog mr-1"></i> Cài đặt mục tiêu
-          </Link>
+      {/* 1. GREETING & CONTEXT HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+          <div>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <span className="text-3xl">👋</span> Chào {agentProfile?.fullName.split(' ').pop() || 'Bạn'},
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 max-w-lg">
+                  Hôm nay chúng ta sẽ tập trung vào 3 trụ cột này để tiến gần hơn tới danh hiệu MDRT.
+              </p>
+          </div>
+          <div className="text-right hidden md:block bg-white dark:bg-pru-card px-4 py-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+              <p className="text-[10px] font-bold text-pru-red uppercase tracking-wider">Mục tiêu MDRT</p>
+              <p className="text-xl font-black text-gray-800 dark:text-gray-100">{(agentProfile?.targets?.yearly || 0).toLocaleString()} <span className="text-xs font-normal text-gray-500">VNĐ</span></p>
+          </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <GoalCard title="Tuần này" actual={salesMetrics.actual.week} target={salesMetrics.targets.weekly} icon="fa-calendar-week" color="blue" />
-          <GoalCard title="Tháng này" actual={salesMetrics.actual.month} target={salesMetrics.targets.monthly} icon="fa-calendar-alt" color="green" />
-          <GoalCard title="Quý này" actual={salesMetrics.actual.quarter} target={salesMetrics.targets.quarterly} icon="fa-chart-pie" color="orange" />
-          <GoalCard title="Năm nay" actual={salesMetrics.actual.year} target={salesMetrics.targets.yearly} icon="fa-trophy" color="red" />
-      </div>
-
-      {/* 2. MAIN LAYOUT */}
+      {/* 2. CONTEXTUAL COMMAND CENTER (3 COLUMNS - STACKED ON MOBILE) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* LEFT COL: ACTION CENTER */}
-        <div className="lg:col-span-2 bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col min-h-[500px] transition-colors">
-            {/* TABS */}
-            <div className="flex border-b border-gray-100 dark:border-gray-800 px-6 pt-4">
-                <button onClick={() => setActiveTab('tasks')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'tasks' ? 'text-pru-red' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
-                    <i className="fas fa-tasks mr-2"></i>Việc cần làm (10 ngày tới)
-                    {activeTab === 'tasks' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
-                </button>
-                <button onClick={() => setActiveTab('pending')} className={`pb-4 px-4 font-bold text-sm transition relative ${activeTab === 'pending' ? 'text-pru-red' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
-                    <i className="fas fa-clock mr-2"></i>Chờ xử lý ({pendingAppointments.length})
-                    {activeTab === 'pending' && <span className="absolute bottom-0 left-0 w-full h-1 bg-pru-red rounded-t-full"></span>}
-                </button>
-            </div>
-
-            <div className="p-6 flex-1 overflow-y-auto">
-                {activeTab === 'tasks' ? (
-                    <div className="space-y-3">
-                        {smartTasks.length > 0 ? (
-                            smartTasks.map(task => (
-                                <div key={task.id} className="bg-white dark:bg-pru-dark/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-center gap-4 hover:shadow-md transition">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${task.color.split(' ').pop() === 'bg-white' ? 'bg-gray-100 dark:bg-gray-800' : task.color.split(' ').pop()}`}>
-                                        <i className={`fas ${task.icon}`}></i>
-                                    </div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-sm text-gray-800 dark:text-gray-100">{task.title}</h4>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{task.subtitle}</p>
-                                    </div>
-                                    {task.customer && (
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleTaskAction(task, 'call')} className="w-8 h-8 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600 flex items-center justify-center shadow-sm"><i className="fas fa-phone-alt text-xs"></i></button>
-                                            <button onClick={() => handleTaskAction(task, 'zalo')} className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center shadow-sm"><i className="fas fa-comment-alt text-xs"></i></button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                                <i className="fas fa-clipboard-check text-4xl mb-2 opacity-50"></i>
-                                <p>Tuyệt vời! Bạn đã hoàn thành mọi việc trong 10 ngày tới.</p>
-                            </div>
-                        )}
-                    </div>
+          
+          {/* COL 1: GROWTH (TĂNG TRƯỞNG) */}
+          <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 flex items-center justify-center shadow-sm">
+                      <i className="fas fa-chart-line text-sm"></i>
+                  </div>
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 uppercase text-sm tracking-wide">Tăng trưởng</h3>
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                {commandCenter.growth.length > 0 ? (
+                    commandCenter.growth.map((task, idx) => (
+                        <CommandCard key={idx} task={task} onClick={() => executeAction(task)} color="green" />
+                    ))
                 ) : (
-                    // PENDING / ALL UPCOMING TAB WITH SEARCH & FILTER
-                    <div className="space-y-4">
-                        {/* SEARCH & FILTER CONTROLS */}
-                        <div className="flex flex-col md:flex-row gap-3">
-                            <div className="relative flex-1">
-                                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                <input 
-                                    className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pru-red" 
-                                    placeholder="Tìm tên hoặc ghi chú..." 
-                                    value={taskSearchTerm}
-                                    onChange={(e) => setTaskSearchTerm(e.target.value)}
-                                />
-                            </div>
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                                <button onClick={() => setTaskFilterType('all')} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition border ${taskFilterType === 'all' ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-900' : 'bg-white dark:bg-gray-900 text-gray-500 border-gray-200 dark:border-gray-700'}`}>Tất cả</button>
-                                {Object.values(AppointmentType).map(t => (
-                                    <button key={t} onClick={() => setTaskFilterType(t)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition border ${taskFilterType === t ? 'bg-pru-red text-white border-pru-red' : 'bg-white dark:bg-gray-900 text-gray-500 border-gray-200 dark:border-gray-700'}`}>{t}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* LIST */}
-                        <div className="space-y-3">
-                            {pendingAppointments.length > 0 ? (
-                                pendingAppointments.map(appt => {
-                                    const now = new Date();
-                                    const apptDate = new Date(`${appt.date}T${appt.time}`);
-                                    const isOverdue = apptDate < now;
-
-                                    return (
-                                        <div key={appt.id} className={`p-4 rounded-xl border shadow-sm flex items-center gap-4 transition group ${isOverdue ? 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white border-gray-100 dark:bg-pru-dark/50 dark:border-gray-800'}`}>
-                                            {/* Icon */}
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
-                                                <i className={`fas ${getTaskIcon(appt.type)}`}></i> 
-                                            </div>
-                                            
-                                            <div className="flex-1">
-                                                <div className="flex justify-between items-start">
-                                                    <h4 className={`font-bold text-sm ${isOverdue ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                                                        {appt.customerName}
-                                                    </h4>
-                                                    {isOverdue && <span className="text-[10px] font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded shadow-sm">Quá hạn</span>}
-                                                </div>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
-                                                    {appt.type} • {formatDateVN(appt.date)} lúc {appt.time}
-                                                </p>
-                                                {appt.note && <p className="text-xs text-gray-400 mt-1 italic line-clamp-1 border-l-2 border-gray-200 pl-2">{appt.note}</p>}
-                                            </div>
-
-                                            {/* Actions */}
-                                            <div className="flex gap-2">
-                                                {/* PASSING STATE: focusDate to automatically navigate calendar */}
-                                                <Link 
-                                                    to="/appointments" 
-                                                    state={{ focusDate: appt.date }}
-                                                    className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-pru-red hover:text-white transition"
-                                                    title="Xem trên lịch"
-                                                >
-                                                    <i className="fas fa-calendar-alt text-xs"></i>
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-                                    <i className="fas fa-check-double text-3xl mb-2 opacity-50"></i>
-                                    <p className="text-sm">Không tìm thấy công việc nào.</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <EmptyState message="Không có cơ hội nóng hôm nay." icon="fa-seedling" />
                 )}
-            </div>
-        </div>
+              </div>
+          </div>
 
-        {/* RIGHT COL: CHART */}
-        <div className="space-y-6">
-            <div className="bg-white dark:bg-pru-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 transition-colors">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-4 text-sm">Biểu đồ Doanh thu (Triệu)</h3>
-                <div style={{ width: '100%', height: 250 }}> 
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                            <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} stroke="#9ca3af" />
-                            <Tooltip 
-                                cursor={{fill: 'transparent'}} 
-                                contentStyle={{fontSize: '12px', borderRadius: '8px', border: 'none', backgroundColor: '#1e1e1e', color: '#fff'}} 
-                            />
-                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                                {chartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#ed1b2e' : '#cbd5e1'} />
-                                ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-        </div>
+          {/* COL 2: TRUST (UY TÍN) */}
+          <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center shadow-sm">
+                      <i className="fas fa-shield-alt text-sm"></i>
+                  </div>
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 uppercase text-sm tracking-wide">Uy tín & Niềm tin</h3>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {commandCenter.trust.length > 0 ? (
+                    commandCenter.trust.map((task, idx) => (
+                        <CommandCard key={idx} task={task} onClick={() => executeAction(task)} color="blue" />
+                    ))
+                ) : (
+                    <EmptyState message="Hôm nay không có sinh nhật hay lịch chăm sóc." icon="fa-calendar-check" />
+                )}
+              </div>
+          </div>
+
+          {/* COL 3: MASTERY (KỸ NĂNG) */}
+          <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center shadow-sm">
+                      <i className="fas fa-brain text-sm"></i>
+                  </div>
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 uppercase text-sm tracking-wide">Nâng cấp bản thân</h3>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                {commandCenter.skills.map((task, idx) => (
+                    <CommandCard key={idx} task={task} onClick={() => executeAction(task)} color="purple" />
+                ))}
+              </div>
+          </div>
       </div>
+
+      {/* 3. RADAR EXPANSION (Collapsible) */}
+      <div className="border-t border-gray-200 dark:border-gray-800 pt-6 mt-8">
+          <div className="flex justify-center">
+            <button 
+                onClick={() => setIsRadarExpanded(!isRadarExpanded)}
+                className={`group flex items-center gap-2 px-5 py-2 rounded-full text-sm font-bold transition-all ${isRadarExpanded ? 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100' : 'bg-white dark:bg-gray-900 text-gray-500 hover:text-pru-red border border-gray-200 dark:border-gray-700 hover:border-pru-red'}`}
+            >
+                <i className={`fas ${isRadarExpanded ? 'fa-chevron-up' : 'fa-radar'} `}></i>
+                {isRadarExpanded ? 'Thu gọn Radar' : 'Mở rộng Radar 10 ngày tới'}
+            </button>
+          </div>
+
+          {isRadarExpanded && (
+              <div className="mt-6 bg-white dark:bg-pru-card rounded-2xl border border-gray-100 dark:border-gray-800 shadow-xl p-6 animate-slide-up">
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center">
+                      <i className="fas fa-calendar-alt mr-2 text-gray-400"></i> Lịch trình sắp tới
+                  </h3>
+                  <div className="space-y-1">
+                      {fullRadarTasks.map(task => (
+                          <div key={task.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition border-b border-gray-50 dark:border-gray-800 last:border-0 group cursor-default">
+                              <div className="flex items-center gap-4">
+                                  <div className="text-center w-14 bg-gray-100 dark:bg-gray-800 rounded-lg py-1">
+                                      <p className="text-[10px] font-bold text-gray-500 uppercase">{formatDateVN(task.date).substring(0,5)}</p>
+                                      <p className="text-sm font-black text-gray-800 dark:text-gray-200">{task.time}</p>
+                                  </div>
+                                  <div>
+                                      <p className="text-sm font-bold text-gray-800 dark:text-gray-200 group-hover:text-pru-red transition-colors">{task.customerName}</p>
+                                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                                        <i className="fas fa-tag text-[10px]"></i> {task.type} • {task.note}
+                                      </p>
+                                  </div>
+                              </div>
+                              <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${
+                                  task.type === AppointmentType.FEE_REMINDER ? 'bg-orange-100 text-orange-700' : 
+                                  task.type === AppointmentType.BIRTHDAY ? 'bg-pink-100 text-pink-700' :
+                                  'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                              }`}>
+                                  {task.type === AppointmentType.FEE_REMINDER ? 'Thu phí' : task.type}
+                              </span>
+                          </div>
+                      ))}
+                      {fullRadarTasks.length === 0 && <p className="text-center text-gray-400 italic text-sm py-4">Không có lịch trình nào trong 10 ngày tới.</p>}
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* 4. SMART ACTION MODAL (Zalo Copy) */}
+      {actionModal.isOpen && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white dark:bg-pru-card rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col h-auto max-h-[80vh]">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                          <i className="fas fa-magic text-purple-500"></i> Gợi ý nội dung
+                      </h3>
+                      <button onClick={() => setActionModal({...actionModal, isOpen: false})} className="text-gray-400 hover:text-gray-600"><i className="fas fa-times"></i></button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto mb-4">
+                    <p className="text-xs text-gray-500 mb-2 italic">Hệ thống đã soạn sẵn, bạn có thể chỉnh sửa trước khi gửi:</p>
+                    <textarea 
+                        className="w-full h-40 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pru-red/20 leading-relaxed font-sans"
+                        value={actionModal.content}
+                        onChange={(e) => setActionModal({...actionModal, content: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                      <button onClick={() => setActionModal({...actionModal, isOpen: false})} className="flex-1 py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded-xl text-sm hover:bg-gray-200 transition">Đóng</button>
+                      <button onClick={() => {
+                          navigator.clipboard.writeText(actionModal.content || '');
+                          if (actionModal.customer) {
+                              const phone = actionModal.customer.phone.replace(/\D/g, '');
+                              window.open(`https://zalo.me/${phone}`, '_blank');
+                          }
+                          setActionModal({...actionModal, isOpen: false});
+                      }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl text-sm shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                          <i className="fas fa-copy"></i> Copy & Mở Zalo
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* 5. VOICE COMMAND BUTTON (REMOVED - MOVED TO GLOBAL LAYOUT FAB) */}
+      {/* The separate FAB here is removed to avoid clutter as requested in "Simple UI". Voice is now accessed via the Global Magic Button in Layout */}
+
+      {/* 6. VOICE ACTION MODAL (ENHANCED) */}
+      {voiceModal && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-md animate-fade-in">
+              <div className="bg-white dark:bg-pru-card rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+                  
+                  {/* Header */}
+                  <div className="text-center mb-6">
+                      <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl transition-all ${isListening ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-400'}`}>
+                          <i className={`fas ${isListening ? 'fa-microphone' : 'fa-check-circle'}`}></i>
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                          {isListening ? 'Đang lắng nghe...' : isProcessingVoice ? 'Đang phân tích...' : 'Kết quả xử lý'}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 italic px-4">
+                          "{transcript || 'Hãy nói nội dung cuộc hẹn hoặc ghi chú...'}"
+                      </p>
+                  </div>
+
+                  {/* Actions Review */}
+                  {!isListening && !isProcessingVoice && voiceActions && (
+                      <div className="flex-1 overflow-y-auto mb-6 space-y-4">
+                          {/* INSIGHTS SECTION */}
+                          {voiceActions.insights && (
+                              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 space-y-2">
+                                  <h4 className="text-xs font-bold uppercase text-blue-700 dark:text-blue-300 flex items-center mb-2">
+                                      <i className="fas fa-brain mr-2"></i> Phân tích thông minh
+                                  </h4>
+                                  
+                                  {voiceActions.insights.sentiment && (
+                                      <div className="flex gap-2 text-sm">
+                                          <span className="font-bold text-gray-600 dark:text-gray-300">Cảm xúc:</span>
+                                          <span className="text-gray-800 dark:text-gray-100">{voiceActions.insights.sentiment}</span>
+                                      </div>
+                                  )}
+                                  
+                                  {voiceActions.insights.life_event && (
+                                      <div className="flex gap-2 text-sm bg-white dark:bg-gray-800 p-2 rounded-lg border border-blue-200 dark:border-blue-800">
+                                          <span className="text-yellow-500"><i className="fas fa-star"></i></span>
+                                          <span className="font-bold text-gray-800 dark:text-gray-100">Sự kiện: {voiceActions.insights.life_event}</span>
+                                      </div>
+                                  )}
+
+                                  {voiceActions.insights.opportunity && (
+                                      <div className="flex gap-2 text-sm bg-green-50 dark:bg-green-900/20 p-2 rounded-lg border border-green-200 dark:border-green-800">
+                                          <span className="text-green-600"><i className="fas fa-lightbulb"></i></span>
+                                          <span className="font-bold text-green-800 dark:text-green-300">Cơ hội: {voiceActions.insights.opportunity}</span>
+                                      </div>
+                                  )}
+                              </div>
+                          )}
+
+                          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                              <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                  <i className="fas fa-user-tag text-blue-500"></i>
+                                  <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">
+                                      Khách hàng: {voiceActions.matchCustomerName || 'Không xác định'}
+                                  </span>
+                              </div>
+                              
+                              <div className="space-y-3">
+                                  {voiceActions.actions?.map((action: any, idx: number) => (
+                                      <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm flex gap-3">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0 ${action.type === 'appointment' ? 'bg-green-500' : 'bg-purple-500'}`}>
+                                              <i className={`fas ${action.type === 'appointment' ? 'fa-calendar-check' : 'fa-sticky-note'}`}></i>
+                                          </div>
+                                          <div>
+                                              <p className="font-bold text-sm text-gray-800 dark:text-gray-200">
+                                                  {action.type === 'appointment' ? 'Tạo Lịch Hẹn' : action.type === 'update_info' ? 'Cập Nhật Hồ Sơ' : 'Ghi Nhật Ký'}
+                                              </p>
+                                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                                  {action.type === 'appointment' 
+                                                      ? `${action.data.time} - ${formatDateVN(action.data.date)}: ${action.data.title}` 
+                                                      : action.type === 'update_info'
+                                                      ? `${action.data.field}: ${action.data.value} (${action.data.reason})`
+                                                      : `${action.data.content}`}
+                                              </p>
+                                          </div>
+                                      </div>
+                                  ))}
+                                  {(!voiceActions.actions || voiceActions.actions.length === 0) && (
+                                      <p className="text-center text-gray-400 text-xs italic">Không tìm thấy hành động cụ thể.</p>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="grid grid-cols-2 gap-3">
+                      {isListening ? (
+                          <button onClick={toggleVoiceRecording} className="col-span-2 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg animate-pulse">
+                              Dừng & Xử lý
+                          </button>
+                      ) : (
+                          <>
+                              <button onClick={() => { setVoiceModal(false); setIsListening(false); }} className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 py-3 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600">
+                                  Hủy bỏ
+                              </button>
+                              {!isProcessingVoice && voiceActions?.matchCustomerId && (
+                                  <button onClick={executeVoiceActions} className="bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg">
+                                      Thực hiện ngay
+                                  </button>
+                              )}
+                              {!isProcessingVoice && !voiceActions?.matchCustomerId && (
+                                  <button onClick={toggleVoiceRecording} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg">
+                                      Thử lại
+                                  </button>
+                              )}
+                          </>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
     </div>
   );
 };
 
-// --- HELPER COMPONENT FOR GOAL CARD ---
-const GoalCard: React.FC<{title: string, actual: number, target: number, icon: string, color: string}> = ({title, actual, target, icon, color}) => {
-    const progress = target > 0 ? Math.min((actual / target) * 100, 100) : 0;
-    // Format to nearest million integer (e.g. 27.35 -> 27)
-    const formatMoney = (n: number) => Math.round(n / 1000000).toLocaleString('vi-VN'); 
+// --- SUB-COMPONENTS ---
 
-    // Color Mapping
-    const colorClasses: Record<string, string> = {
-        blue: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 border-blue-100 dark:border-blue-900/30',
-        green: 'text-green-600 bg-green-50 dark:bg-green-900/20 dark:text-green-400 border-green-100 dark:border-green-900/30',
-        orange: 'text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400 border-orange-100 dark:border-orange-900/30',
-        red: 'text-pru-red bg-red-50 dark:bg-red-900/20 dark:text-red-400 border-red-100 dark:border-red-900/30'
+const CommandCard: React.FC<{task: any, onClick: () => void, color: 'green' | 'blue' | 'purple'}> = ({task, onClick, color}) => {
+    // Style configurations based on color prop
+    const styles = {
+        green: {
+            border: 'border-l-4 border-l-green-500',
+            bgIcon: 'bg-green-50 dark:bg-green-900/20 text-green-600',
+            btn: 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40',
+            urgent: 'bg-red-50 text-red-600 border border-red-100'
+        },
+        blue: {
+            border: 'border-l-4 border-l-blue-500',
+            bgIcon: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
+            btn: 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40',
+            urgent: ''
+        },
+        purple: {
+            border: 'border-l-4 border-l-purple-500',
+            bgIcon: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600',
+            btn: 'bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/40',
+            urgent: ''
+        }
     };
 
-    const barColors: Record<string, string> = {
-        blue: 'bg-blue-500',
-        green: 'bg-green-500',
-        orange: 'bg-orange-500',
-        red: 'bg-pru-red'
-    };
+    const s = styles[color];
+    const isUrgent = task.priority === 'urgent';
 
     return (
-        <div className="bg-white dark:bg-pru-card p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 transition-colors">
-            <div className="flex justify-between items-start mb-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${colorClasses[color]}`}>
-                    <i className={`fas ${icon}`}></i>
+        <div className={`bg-white dark:bg-pru-card p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-all group ${s.border} flex flex-col h-full`}>
+            <div className="flex-1">
+                <div className="flex justify-between items-start">
+                    <h4 className={`font-bold text-sm mb-1 line-clamp-1 ${isUrgent ? 'text-red-600' : 'text-gray-800 dark:text-gray-100'}`}>
+                        {isUrgent && <i className="fas fa-exclamation-circle mr-1 animate-pulse"></i>}
+                        {task.title}
+                    </h4>
                 </div>
-                <div className="text-right">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{title}</p>
-                    {target > 0 ? (
-                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
-                            Mục tiêu: {formatMoney(target)}
-                        </p>
-                    ) : (
-                        <p className="text-[10px] text-gray-400 italic">Chưa đặt MT</p>
-                    )}
-                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed mb-3">{task.desc}</p>
             </div>
             
-            <div className="mb-2">
-                <span className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoney(actual)}</span>
-                <span className="text-xs text-gray-500 ml-1">Tr</span>
-            </div>
-
-            <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div 
-                    className={`h-full rounded-full transition-all duration-1000 ${barColors[color]}`}
-                    style={{ width: `${progress}%` }}
-                ></div>
-            </div>
-            <p className="text-right text-[10px] font-bold text-gray-400 mt-1">{progress.toFixed(0)}%</p>
+            <button 
+                onClick={onClick}
+                className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition-colors gap-2 ${s.btn}`}
+            >
+                <i className={`fas ${task.actionIcon}`}></i> {task.actionLabel}
+            </button>
         </div>
     );
 };
+
+const EmptyState: React.FC<{message: string, icon: string}> = ({message, icon}) => (
+    <div className="bg-gray-50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center h-full flex flex-col items-center justify-center">
+        <div className="w-10 h-10 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center mb-2 shadow-sm text-gray-300">
+            <i className={`fas ${icon}`}></i>
+        </div>
+        <p className="text-xs text-gray-400 font-medium">{message}</p>
+    </div>
+);
 
 export default Dashboard;
